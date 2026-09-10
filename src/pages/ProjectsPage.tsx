@@ -1,9 +1,13 @@
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { useStore } from "../context/StoreContext";
+import { useAuth } from "../context/AuthContext";
+import { roleLabel } from "../lib/roles";
 
 export function ProjectsPage() {
+  const { user } = useAuth();
   const { projects, setProjectId, projectId, reload, role } = useStore();
+  const canCreate = Boolean(user?.is_admin || role === "leader");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
@@ -27,7 +31,7 @@ export function ProjectsPage() {
       <div className="page-head">
         <div>
           <h1>專案</h1>
-          <p>同一人可以在不同專案當領導或成員。</p>
+          <p>同一個帳號可以在不同專案當領導或成員。登入後看到的功能依角色而定。</p>
         </div>
       </div>
       <div className="grid-2">
@@ -48,6 +52,7 @@ export function ProjectsPage() {
             ))}
           </ul>
         </div>
+        {canCreate ? (
         <form className="panel" onSubmit={onCreate}>
           <h2 style={{ marginTop: 0 }}>新增專案</h2>
           <div className="field">
@@ -60,8 +65,14 @@ export function ProjectsPage() {
           </div>
           <p className="error">{error}</p>
           <button className="btn btn-gold" type="submit">建立（你會成為專案領導）</button>
-          {role && <p className="hint" style={{ marginTop: 12 }}>目前身份：{role === "leader" ? "專案領導 / 管理員" : "專案成員"}</p>}
+          <p className="hint" style={{ marginTop: 12 }}>目前身份：{roleLabel(Boolean(user?.is_admin), role)}</p>
         </form>
+        ) : (
+          <div className="panel">
+            <h2 style={{ marginTop: 0 }}>你的權限</h2>
+            <p className="hint">目前是專案成員，可看任務、甘特圖與自己的週報。人員與專案設定由領導處理。</p>
+          </div>
+        )}
       </div>
     </section>
   );

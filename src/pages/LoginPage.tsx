@@ -45,8 +45,8 @@ export function LoginPage() {
         <h1>Albert的工作基地</h1>
         <p>
           {hasSupabaseConfig()
-            ? "請用帳號或 EMAIL 登入。"
-            : "本機模式：帳號 admin。接上 Supabase 後改為雲端帳號。"}
+            ? "請用帳號或 EMAIL 登入。權限依帳號角色而定。"
+            : "請用帳號登入。管理員、專案領導、專案成員看到的功能不同。"}
         </p>
         <div className="field">
           <label htmlFor="account">帳號</label>

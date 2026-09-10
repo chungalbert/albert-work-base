@@ -48,7 +48,7 @@ export function GanttPage() {
       <div className="page-head">
         <div>
           <h1>甘特圖</h1>
-          <p>拖曳橫條改日期，拉兩端改工期，放開就會存檔。</p>
+          <p>拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。</p>
         </div>
       </div>
       {tasks.length === 0 ? (

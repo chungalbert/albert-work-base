@@ -12,7 +12,7 @@ export function ReminderBanner() {
   const label = { overdue: "已逾期", today: "今日到期", tomorrow: "明日到期" };
   return (
     <div className="alerts">
-      <h2>今日提醒{role === "leader" ? "（專案領導）" : ""}</h2>
+          <h2>今日提醒</h2>
       <ul>
         {items.map((item) => (
           <li key={item.task.id}>

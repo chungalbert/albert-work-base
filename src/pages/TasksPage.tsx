@@ -56,7 +56,11 @@ export function TasksPage() {
       <div className="page-head">
         <div>
           <h1>任務</h1>
-          <p>每件任務都要有 Deadline。到期前會出現在上方提醒，設定寄信後也會寄 EMAIL。</p>
+          <p>
+            {canManage
+              ? "可新增、指派與改 Deadline。專案成員登入後只會看到自己的任務。"
+              : "這是指派給你的任務，可以改狀態與日期。"}
+          </p>
         </div>
       </div>
 
@@ -104,7 +108,7 @@ export function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => {
+              {(canManage ? tasks : tasks.filter((t) => t.assignee_id === user?.id)).map((task) => {
                 const owner = profiles.find((p) => p.id === task.assignee_id);
                 const canEdit = canManage || task.assignee_id === user?.id;
                 return (

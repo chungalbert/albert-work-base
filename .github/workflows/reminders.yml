@@ -1,24 +1,12 @@
 name: Daily deadline reminders
 
+# Email reminders are disabled for now. Keep workflow_dispatch if we turn them on later.
 on:
-  schedule:
-    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
   remind:
     runs-on: ubuntu-latest
     steps:
-      - name: Call send-reminders
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "Skipping: SUPABASE_URL or CRON_SECRET not set"
-            exit 0
-          fi
-          curl --fail --show-error -X POST "$SUPABASE_URL/functions/v1/send-reminders" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json" \
-            -d '{}'
+      - name: Skip
+        run: echo "Automatic email is disabled."

@@ -7,8 +7,8 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { TasksPage } from "./pages/TasksPage";
 import { ReportPage } from "./pages/ReportPage";
 import { ReminderBanner } from "./components/ReminderBanner";
-import { SetupBanner } from "./components/SetupBanner";
 import type { ViewId } from "./lib/types";
+import { roleLabel } from "./lib/roles";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
 
@@ -22,8 +22,11 @@ const NAV: { id: ViewId; label: string }[] = [
 
 function Shell() {
   const { user, signOut } = useAuth();
-  const { projects, projectId, setProjectId } = useStore();
+  const { projects, projectId, setProjectId, role } = useStore();
   const [view, setView] = useState<ViewId>("projects");
+  const isLeader = Boolean(user?.is_admin || role === "leader");
+  const nav = isLeader ? NAV : NAV.filter((item) => item.id !== "people");
+  const currentView = !isLeader && view === "people" ? "projects" : view;
 
   return (
     <div className="wrap">
@@ -44,28 +47,27 @@ function Shell() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <span className="pill">{user?.display_name}</span>
+          <span className="pill">{user?.display_name} · {roleLabel(Boolean(user?.is_admin), role)}</span>
           <button className="logout" type="button" onClick={() => void signOut()}>登出</button>
         </div>
       </header>
       <nav className="nav" aria-label="主選單">
-        {NAV.map((item) => (
-          <button key={item.id} className={view === item.id ? "on" : ""} type="button" onClick={() => setView(item.id)}>
+        {nav.map((item) => (
+          <button key={item.id} className={currentView === item.id ? "on" : ""} type="button" onClick={() => setView(item.id)}>
             {item.label}
           </button>
         ))}
       </nav>
-      <SetupBanner />
       <ReminderBanner />
-      {view === "projects" && <ProjectsPage />}
-      {view === "people" && <PeoplePage />}
-      {view === "tasks" && <TasksPage />}
-      {view === "gantt" && (
+      {currentView === "projects" && <ProjectsPage />}
+      {currentView === "people" && <PeoplePage />}
+      {currentView === "tasks" && <TasksPage />}
+      {currentView === "gantt" && (
         <Suspense fallback={<p className="hint">載入甘特圖…</p>}>
           <GanttPage />
         </Suspense>
       )}
-      {view === "report" && <ReportPage />}
+      {currentView === "report" && <ReportPage />}
       <footer className="foot">Albert的工作基地</footer>
     </div>
   );
