@@ -1,7 +1,7 @@
 import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { hasSupabaseConfig } from "./util";
-import type { InviteInput, Profile, Project, ProjectMember, Role, Task } from "./types";
+import type { AccountInput, InviteInput, Profile, Project, ProjectMember, Role, Task } from "./types";
 
 export const isCloud = hasSupabaseConfig;
 
@@ -39,6 +39,14 @@ export const api = {
   async myRole(projectId: string): Promise<Role | null> {
     if (hasSupabaseConfig()) return cloudApi.myRole(projectId);
     return localApi.myRole(projectId);
+  },
+  async createAccounts(rows: AccountInput[]) {
+    if (hasSupabaseConfig()) return cloudApi.createAccounts(rows);
+    return localApi.createAccounts(rows);
+  },
+  async addProjectMember(projectId: string, userId: string, role: Role) {
+    if (hasSupabaseConfig()) return cloudApi.addProjectMember(projectId, userId, role);
+    return localApi.addProjectMember(projectId, userId, role);
   },
   async inviteMembers(rows: InviteInput[]) {
     if (hasSupabaseConfig()) return cloudApi.inviteMembers(rows);

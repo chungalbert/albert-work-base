@@ -78,7 +78,7 @@ export function LoginPage() {
           >
             <div className="icon-box icon-orange" aria-hidden="true">👥</div>
             <h2>人員與任務</h2>
-            <p>批量新增人員（單位、EMAIL、領導／成員），指派任務與 Deadline，並填寫當前狀態。</p>
+            <p>批量開通帳號（單位、EMAIL），再由專案領導用下拉選單把人加進專案。任務可設 Deadline 與當前狀態。</p>
             <span className="ok-pill">可用</span>
           </article>
           <article

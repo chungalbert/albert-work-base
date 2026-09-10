@@ -36,10 +36,13 @@ export interface Task {
   note: string;
 }
 
-export interface InviteInput {
+export interface AccountInput {
   display_name: string;
   unit: string;
   email: string;
+}
+
+export interface InviteInput extends AccountInput {
   role: Role;
   project_id: string;
 }
@@ -49,8 +52,8 @@ export interface CredentialRow {
   username: string;
   email: string;
   password: string;
-  project_name: string;
-  role: Role;
+  project_name?: string;
+  role?: Role;
 }
 
 export interface ReminderItem {

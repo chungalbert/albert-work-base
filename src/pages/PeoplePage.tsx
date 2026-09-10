@@ -1,25 +1,27 @@
 import { FormEvent, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { downloadText, toCsv } from "../lib/util";
-import type { CredentialRow, InviteInput, Role } from "../lib/types";
+import type { CredentialRow, Role } from "../lib/types";
 import { useStore } from "../context/StoreContext";
 
 interface Row {
   display_name: string;
   unit: string;
   email: string;
-  role: Role;
 }
 
-const emptyRow = (): Row => ({ display_name: "", unit: "", email: "", role: "member" });
+const emptyRow = (): Row => ({ display_name: "", unit: "", email: "" });
 
 export function PeoplePage() {
-  const { project, projects, profiles, members, role, reload } = useStore();
+  const { project, profiles, members, role, reload } = useStore();
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [paste, setPaste] = useState("");
   const [creds, setCreds] = useState<CredentialRow[]>([]);
   const [error, setError] = useState("");
+  const [addError, setAddError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pickId, setPickId] = useState("");
+  const [pickRole, setPickRole] = useState<Role>("member");
 
   const people = useMemo(() => {
     return members.map((m) => ({
@@ -28,7 +30,9 @@ export function PeoplePage() {
     }));
   }, [members, profiles]);
 
-  const canInvite = role === "leader";
+  const canManage = role === "leader";
+  const memberIds = new Set(members.map((m) => m.user_id));
+  const candidates = profiles.filter((p) => !memberIds.has(p.id));
 
   const applyPaste = () => {
     const parsed = paste
@@ -41,36 +45,46 @@ export function PeoplePage() {
         display_name: cols[0] ?? "",
         unit: cols[1] ?? "",
         email: cols[2] ?? "",
-        role: cols[3]?.includes("領") ? "leader" : "member",
       })),
     );
   };
 
-  const submit = async (event: FormEvent) => {
+  const createAccounts = async (event: FormEvent) => {
     event.preventDefault();
-    if (!project) return;
     setError("");
     setBusy(true);
     try {
-      const payload: InviteInput[] = rows
-        .filter((r) => r.display_name && r.email)
-        .map((r) => ({ ...r, project_id: project.id }));
+      const payload = rows.filter((r) => r.display_name && r.email);
       if (payload.length === 0) throw new Error("請至少填一列姓名與 EMAIL");
-      const next = await api.inviteMembers(payload);
+      const next = await api.createAccounts(payload);
       setCreds(next);
       setRows([emptyRow(), emptyRow(), emptyRow()]);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "新增失敗");
+      setError(err instanceof Error ? err.message : "開通失敗");
     } finally {
       setBusy(false);
     }
   };
 
+  const addToProject = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!project || !pickId) return;
+    setAddError("");
+    try {
+      await api.addProjectMember(project.id, pickId, pickRole);
+      setPickId("");
+      setPickRole("member");
+      await reload();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "加入失敗");
+    }
+  };
+
   const download = () => {
     const csv = toCsv([
-      ["姓名", "帳號", "EMAIL", "密碼", "專案", "角色"],
-      ...creds.map((c) => [c.display_name, c.username, c.email, c.password, c.project_name, c.role === "leader" ? "專案領導" : "專案成員"]),
+      ["姓名", "帳號", "EMAIL", "密碼"],
+      ...creds.map((c) => [c.display_name, c.username, c.email, c.password]),
     ]);
     downloadText("default-accounts.csv", csv, "text/csv;charset=utf-8");
   };
@@ -80,14 +94,14 @@ export function PeoplePage() {
       <div className="page-head">
         <div>
           <h1>人員</h1>
-          <p>批量新增時會產生 Default 帳號與密碼，只顯示這一次，請立刻下載。</p>
+          <p>開通帳密與加入專案是分開的。先開通帳號，再由專案領導用下拉選單把人加進目前專案。</p>
         </div>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>{project?.name ?? "尚未選擇專案"} 成員</h2>
         <div className="table-wrap">
-          <table>
+          <table className="table">
             <thead>
               <tr>
                 <th>姓名</th>
@@ -98,6 +112,11 @@ export function PeoplePage() {
               </tr>
             </thead>
             <tbody>
+              {people.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="hint">這個專案還沒有成員。</td>
+                </tr>
+              )}
               {people.map((row) => (
                 <tr key={`${row.project_id}-${row.user_id}`}>
                   <td>{row.profile?.display_name}</td>
@@ -110,14 +129,46 @@ export function PeoplePage() {
             </tbody>
           </table>
         </div>
+
+        {canManage && project && (
+          <form className="add-member-row" onSubmit={addToProject}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor="pick-user">加入現有人員</label>
+              <select
+                id="pick-user"
+                value={pickId}
+                onChange={(e) => setPickId(e.target.value)}
+                required
+              >
+                <option value="">{candidates.length === 0 ? "沒有可加入的人員，請先下方開通帳號" : "選擇人員"}</option>
+                {candidates.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.display_name}（{p.username}）
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor="pick-role">專案角色</label>
+              <select id="pick-role" value={pickRole} onChange={(e) => setPickRole(e.target.value as Role)}>
+                <option value="member">專案成員</option>
+                <option value="leader">專案領導</option>
+              </select>
+            </div>
+            <button className="btn btn-gold" type="submit" disabled={!pickId}>
+              加入「{project.name}」
+            </button>
+            {addError && <p className="error" style={{ margin: 0 }}>{addError}</p>}
+          </form>
+        )}
       </div>
 
-      {canInvite && (
-        <form className="panel" onSubmit={submit}>
-          <h2 style={{ marginTop: 0 }}>批量新增到「{project?.name}」</h2>
-          <p className="hint">可貼上：姓名, 單位, EMAIL, 角色（領導/成員）。角色也可在表格改。</p>
+      {canManage && (
+        <form className="panel" onSubmit={createAccounts}>
+          <h2 style={{ marginTop: 0 }}>開通帳號（獨立，不加入專案）</h2>
+          <p className="hint">只產生登入帳密。要進專案，請用上面的下拉選單選人。</p>
           <div className="field">
-            <label htmlFor="paste">貼上 CSV / TSV</label>
+            <label htmlFor="paste">貼上 CSV / TSV（姓名, 單位, EMAIL）</label>
             <textarea id="paste" rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} />
           </div>
           <button type="button" className="btn" onClick={applyPaste}>帶入表格</button>
@@ -128,7 +179,6 @@ export function PeoplePage() {
                   <th>姓名</th>
                   <th>單位</th>
                   <th>EMAIL</th>
-                  <th>角色</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,19 +214,6 @@ export function PeoplePage() {
                         }}
                       />
                     </td>
-                    <td>
-                      <select
-                        value={row.role}
-                        onChange={(e) => {
-                          const next = [...rows];
-                          next[index] = { ...row, role: e.target.value as Role };
-                          setRows(next);
-                        }}
-                      >
-                        <option value="member">專案成員</option>
-                        <option value="leader">專案領導</option>
-                      </select>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -184,10 +221,9 @@ export function PeoplePage() {
           </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button type="button" className="btn" onClick={() => setRows([...rows, emptyRow()])}>加一列</button>
-            <button className="btn btn-gold" type="submit" disabled={busy || !project}>
-              {busy ? "新增中…" : "新增並產生帳密"}
+            <button className="btn btn-gold" type="submit" disabled={busy}>
+              {busy ? "開通中…" : "產生帳密"}
             </button>
-            {projects.length > 1 && <span className="hint">人員會加入目前上方選取的專案。</span>}
           </div>
           <p className="error">{error}</p>
         </form>
@@ -199,15 +235,15 @@ export function PeoplePage() {
             <h2 style={{ margin: 0 }}>本次產生的 Default 帳密</h2>
             <button className="btn btn-gold" type="button" onClick={download}>下載 CSV</button>
           </div>
+          <p className="hint">只顯示這一次，請立刻下載。這些人還沒進任何專案，請再到上面用下拉選單加入。</p>
           <div className="table-wrap">
-            <table>
+            <table className="table">
               <thead>
                 <tr>
                   <th>姓名</th>
                   <th>帳號</th>
                   <th>EMAIL</th>
                   <th>密碼</th>
-                  <th>角色</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,7 +253,6 @@ export function PeoplePage() {
                     <td>{c.username}</td>
                     <td>{c.email}</td>
                     <td>{c.password}</td>
-                    <td>{c.role === "leader" ? "專案領導" : "專案成員"}</td>
                   </tr>
                 ))}
               </tbody>

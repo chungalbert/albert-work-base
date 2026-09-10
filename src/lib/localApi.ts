@@ -2,9 +2,11 @@ import { todayISO } from "./dates";
 import type {
   CredentialRow,
   InviteInput,
+  AccountInput,
   Profile,
   Project,
   ProjectMember,
+  Role,
   Task,
 } from "./types";
 import { randomPassword, sha256, usernameFromEmail } from "./util";
@@ -135,6 +137,74 @@ export const localApi = {
         (m) => m.project_id === projectId && m.user_id === store.sessionUserId,
       )?.role ?? null
     );
+  },
+
+  async createAccounts(rows: AccountInput[]): Promise<CredentialRow[]> {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
+    const canCreate =
+      Boolean(me?.is_admin) ||
+      store.members.some((m) => m.user_id === store.sessionUserId && m.role === "leader");
+    if (!canCreate) throw new Error("只有專案領導或管理員可以開通帳號");
+
+    const creds: CredentialRow[] = [];
+    const taken = new Set(store.profiles.map((p) => p.username.toLowerCase()));
+
+    for (const row of rows) {
+      const email = row.email.trim().toLowerCase();
+      if (!email || !row.display_name.trim()) continue;
+      const existing = store.profiles.find((p) => p.email.toLowerCase() === email);
+      if (existing) {
+        creds.push({
+          display_name: existing.display_name,
+          username: existing.username,
+          email: existing.email,
+          password: "(已有帳號，沿用原密碼)",
+        });
+        continue;
+      }
+      const username = usernameFromEmail(email, taken);
+      taken.add(username);
+      const password = randomPassword();
+      const id = crypto.randomUUID();
+      store.profiles.push({
+        id,
+        username,
+        display_name: row.display_name.trim(),
+        unit: row.unit.trim(),
+        email,
+        is_admin: false,
+      });
+      store.passwordHashes[id] = await sha256(`${username}:${password}`);
+      creds.push({
+        display_name: row.display_name.trim(),
+        username,
+        email,
+        password,
+      });
+    }
+    save(store);
+    return creds;
+  },
+
+  addProjectMember(projectId: string, userId: string, role: Role): ProjectMember {
+    const store = load();
+    if (localApi.myRole(projectId) !== "leader") {
+      throw new Error("只有專案領導或管理員可以把人加入專案");
+    }
+    const profile = store.profiles.find((p) => p.id === userId);
+    if (!profile) throw new Error("找不到這位人員");
+    const existing = store.members.find((m) => m.project_id === projectId && m.user_id === userId);
+    if (existing) {
+      existing.role = role;
+      save(store);
+      return existing;
+    }
+    const member: ProjectMember = { project_id: projectId, user_id: userId, role };
+    store.members.push(member);
+    save(store);
+    return member;
   },
 
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {

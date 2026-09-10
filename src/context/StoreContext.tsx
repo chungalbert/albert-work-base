@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { Profile, Project, ProjectMember, Role, Task } from "../lib/types";
 import { useAuth } from "./AuthContext";
@@ -25,6 +25,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
 
   const reload = useCallback(async () => {
     if (!user) return;
@@ -37,9 +39,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setProjects(nextProjects);
     setProfiles(nextProfiles);
     setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
-    setProjectId((current) =>
-      current && visible.has(current) ? current : nextProjects[0]?.id ?? null,
-    );
+    const selected =
+      projectIdRef.current && visible.has(projectIdRef.current)
+        ? projectIdRef.current
+        : nextProjects[0]?.id ?? null;
+    if (selected !== projectIdRef.current) setProjectId(selected);
+    if (selected) setMembers(await api.listMembers(selected));
+    else setMembers([]);
   }, [user]);
 
   useEffect(() => {

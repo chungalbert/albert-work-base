@@ -54,33 +54,43 @@ Deno.serve(async (req) => {
     display_name: string;
     unit: string;
     email: string;
-    role: "leader" | "member";
-    project_id: string;
+    role?: "leader" | "member";
+    project_id?: string;
   }>;
 
   const { data: existingProfiles } = await admin.from("profiles").select("username,email,id");
   const taken = new Set((existingProfiles ?? []).map((p: { username: string }) => p.username.toLowerCase()));
   const credentials = [];
 
+  const { data: leadRows } = await admin
+    .from("project_members")
+    .select("id")
+    .eq("user_id", userData.user.id)
+    .eq("role", "leader")
+    .limit(1);
+  const canCreateAccounts = Boolean(me?.is_admin || (leadRows && leadRows.length > 0));
+
   for (const row of rows) {
     const email = row.email.trim().toLowerCase();
     if (!email || !row.display_name?.trim()) continue;
 
-    const { data: membership } = await admin
-      .from("project_members")
-      .select("role")
-      .eq("project_id", row.project_id)
-      .eq("user_id", userData.user.id)
-      .maybeSingle();
-    if (!me?.is_admin && membership?.role !== "leader") {
-      return json({ error: "只有專案領導或管理員可以加人" }, 403);
+    if (row.project_id) {
+      const { data: membership } = await admin
+        .from("project_members")
+        .select("role")
+        .eq("project_id", row.project_id)
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+      if (!me?.is_admin && membership?.role !== "leader") {
+        return json({ error: "只有專案領導或管理員可以加人" }, 403);
+      }
+    } else if (!canCreateAccounts) {
+      return json({ error: "只有專案領導或管理員可以開通帳號" }, 403);
     }
 
-    const { data: project } = await admin
-      .from("projects")
-      .select("name")
-      .eq("id", row.project_id)
-      .single();
+    const { data: project } = row.project_id
+      ? await admin.from("projects").select("name").eq("id", row.project_id).single()
+      : { data: null };
 
     let profile = (existingProfiles ?? []).find(
       (p: { email: string }) => p.email.toLowerCase() === email,
@@ -116,11 +126,13 @@ Deno.serve(async (req) => {
       profile = { id: created.data.user!.id, username, email };
     }
 
-    await admin.from("project_members").upsert({
-      project_id: row.project_id,
-      user_id: profile.id,
-      role: row.role,
-    });
+    if (row.project_id) {
+      await admin.from("project_members").upsert({
+        project_id: row.project_id,
+        user_id: profile.id,
+        role: row.role ?? "member",
+      });
+    }
 
     credentials.push({
       display_name: row.display_name.trim(),

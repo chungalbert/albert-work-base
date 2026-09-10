@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
 import type {
+  AccountInput,
   CredentialRow,
   InviteInput,
   Profile,
@@ -102,6 +103,23 @@ export const cloudApi = {
     if (me.is_admin) return "leader";
     const members = await cloudApi.listMembers(projectId);
     return members.find((m) => m.user_id === me.id)?.role ?? null;
+  },
+
+  async createAccounts(rows: AccountInput[]): Promise<CredentialRow[]> {
+    const { data, error } = await sb().functions.invoke("invite-members", { body: { rows } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data.credentials as CredentialRow[];
+  },
+
+  async addProjectMember(projectId: string, userId: string, role: Role): Promise<ProjectMember> {
+    const { data, error } = await sb()
+      .from("project_members")
+      .upsert({ project_id: projectId, user_id: userId, role })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as ProjectMember;
   },
 
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {
