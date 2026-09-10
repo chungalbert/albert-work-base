@@ -29,46 +29,57 @@ function Shell() {
   const currentView = !isLeader && view === "people" ? "projects" : view;
 
   return (
-    <div className="wrap">
-      <header className="top">
-        <a className="brand" href="./">
-          <span className="mark" aria-hidden="true">A</span>
-          <span className="brand-name">ALBERT</span>
-        </a>
-        <div className="top-actions">
-          <select
-            value={projectId ?? ""}
-            onChange={(e) => setProjectId(e.target.value)}
-            aria-label="專案"
-            style={{ background: "var(--bg)", border: "1px solid var(--line)", padding: "8px 10px" }}
-          >
-            {projects.length === 0 && <option value="">尚未有專案</option>}
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <span className="pill">{user?.display_name} · {roleLabel(Boolean(user?.is_admin), role)}</span>
-          <button className="logout" type="button" onClick={() => void signOut()}>登出</button>
+    <div className="app">
+      <header className="site-header">
+        <div className="header-inner">
+          <a className="brand" href="./">
+            <span className="mark" aria-hidden="true">⚡</span>
+            <span className="brand-name">Albert 工作基地</span>
+          </a>
+          <div className="header-right">
+            <nav className="header-nav" aria-label="主選單">
+              {nav.map((item) => (
+                <button
+                  key={item.id}
+                  className={currentView === item.id ? "on" : ""}
+                  type="button"
+                  onClick={() => setView(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+            <select
+              className="proj-select"
+              value={projectId ?? ""}
+              onChange={(e) => setProjectId(e.target.value)}
+              aria-label="專案"
+            >
+              {projects.length === 0 && <option value="">尚未有專案</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div className="auth-chip">
+              <span className="muted-label">{user?.display_name} · {roleLabel(Boolean(user?.is_admin), role)}</span>
+              <button className="btn-blue" type="button" onClick={() => void signOut()}>登出</button>
+            </div>
+          </div>
         </div>
       </header>
-      <nav className="nav" aria-label="主選單">
-        {nav.map((item) => (
-          <button key={item.id} className={currentView === item.id ? "on" : ""} type="button" onClick={() => setView(item.id)}>
-            {item.label}
-          </button>
-        ))}
-      </nav>
-      <ReminderBanner />
-      {currentView === "projects" && <ProjectsPage />}
-      {currentView === "people" && <PeoplePage />}
-      {currentView === "tasks" && <TasksPage />}
-      {currentView === "gantt" && (
-        <Suspense fallback={<p className="hint">載入甘特圖…</p>}>
-          <GanttPage />
-        </Suspense>
-      )}
-      {currentView === "report" && <ReportPage />}
-      <footer className="foot">Albert的工作基地</footer>
+      <main className="page">
+        <ReminderBanner />
+        {currentView === "projects" && <ProjectsPage />}
+        {currentView === "people" && <PeoplePage />}
+        {currentView === "tasks" && <TasksPage />}
+        {currentView === "gantt" && (
+          <Suspense fallback={<p className="hint">載入甘特圖…</p>}>
+            <GanttPage />
+          </Suspense>
+        )}
+        {currentView === "report" && <ReportPage />}
+      </main>
+      <footer className="site-footer">版權所有 Albert 工作基地 · V1</footer>
     </div>
   );
 }
@@ -77,9 +88,9 @@ export default function App() {
   const { user, loading } = useAuth();
   if (loading) {
     return (
-      <main className="gate">
-        <p className="hint">載入中…</p>
-      </main>
+      <div className="app">
+        <p className="hint" style={{ padding: 40 }}>載入中…</p>
+      </div>
     );
   }
   if (!user) return <LoginPage />;

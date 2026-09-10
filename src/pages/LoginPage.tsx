@@ -9,6 +9,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
 
@@ -39,66 +40,135 @@ export function LoginPage() {
   };
 
   return (
-    <main className="gate">
-      <form className="gate-card" onSubmit={onSubmit}>
-        <span className="mark" aria-hidden="true">A</span>
-        <h1>Albert的工作基地</h1>
-        <p>
-          {hasSupabaseConfig()
-            ? "請用帳號或 EMAIL 登入。權限依帳號角色而定。"
-            : "請用帳號登入。管理員、專案領導、專案成員看到的功能不同。"}
-        </p>
-        <div className="field">
-          <label htmlFor="account">帳號</label>
-          <input
-            id="account"
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            autoComplete="username"
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password">密碼</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </div>
-        <p className="gate-error" role="alert">{error}</p>
-        <button className="gate-submit" type="submit" disabled={busy}>
-          {busy ? "…" : "進入"}
-        </button>
-        {hasSupabaseConfig() && (
-          <p className="hint" style={{ marginTop: 16 }}>
-            第一次使用雲端？
-            <button type="button" className="logout" style={{ marginLeft: 8 }} onClick={() => setShowSetup((v) => !v)}>
-              建立管理員
-            </button>
-          </p>
-        )}
-        {showSetup && (
-          <div style={{ marginTop: 16 }}>
-            <div className="field">
-              <label htmlFor="admin-email">管理員 EMAIL</label>
-              <input
-                id="admin-email"
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                required
-              />
+    <div className="app">
+      <header className="site-header">
+        <div className="header-inner">
+          <a className="brand" href="./">
+            <span className="mark" aria-hidden="true">⚡</span>
+            <span className="brand-name">Albert 工作基地</span>
+          </a>
+          <div className="header-right">
+            <nav className="header-nav">
+              <button type="button" onClick={() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" })}>工具列表</button>
+              <button type="button" onClick={() => setShowLogin(true)}>任務</button>
+              <button type="button" onClick={() => setShowLogin(true)}>甘特圖</button>
+              <button type="button" onClick={() => setShowLogin(true)}>週報</button>
+            </nav>
+            <div className="auth-chip">
+              <span className="muted-label">未登入</span>
+              <button className="btn-blue" type="button" onClick={() => setShowLogin(true)}>登入</button>
             </div>
-            <button className="btn btn-gold" type="button" onClick={bootstrap} disabled={busy}>
-              用上面的帳號密碼建立第一個管理員
-            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="page">
+        <section className="hero">
+          <h1>Albert 工作基地 <span className="ver">V1</span></h1>
+          <p className="lead">人員、任務、甘特圖與週報，同一專案內的成員皆可使用。</p>
+        </section>
+
+        <section className="tool-grid" id="tools" aria-label="功能">
+          <article
+            className="tool-card"
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowLogin(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowLogin(true); } }}
+          >
+            <div className="icon-box icon-orange" aria-hidden="true">👥</div>
+            <h2>人員與任務</h2>
+            <p>批量新增人員（單位、EMAIL、領導／成員），指派任務與 Deadline，並填寫當前狀態。</p>
+            <span className="ok-pill">可用</span>
+          </article>
+          <article
+            className="tool-card"
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowLogin(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowLogin(true); } }}
+          >
+            <div className="icon-box icon-yellow" aria-hidden="true">📊</div>
+            <h2>甘特圖與週報</h2>
+            <p>拖曳調整 Schedule，一鍵產生本週 Weekly Report，可列印／存 PDF 或下載 HTML。</p>
+            <span className="ok-pill">可用</span>
+          </article>
+        </section>
+
+        {showLogin && (
+          <div className="login-overlay" onClick={() => setShowLogin(false)}>
+            <form className="login-card gate-card" onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}>
+              <h2 style={{ marginTop: 0 }}>登入</h2>
+              <p className="hint">
+                {hasSupabaseConfig()
+                  ? "請用帳號或 EMAIL 登入。權限依帳號角色而定。"
+                  : "請用帳號登入。管理員、專案領導、專案成員看到的功能不同。"}
+              </p>
+              <div className="field">
+                <label htmlFor="account">帳號</label>
+                <input
+                  id="account"
+                  value={account}
+                  onChange={(e) => setAccount(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="password">密碼</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <p className="gate-error" role="alert">{error}</p>
+              <button className="btn-blue" type="submit" disabled={busy}>
+                {busy ? "…" : "登入"}
+              </button>
+              {hasSupabaseConfig() && (
+                <p className="hint" style={{ marginTop: 16 }}>
+                  第一次使用雲端？
+                  <button type="button" className="ghost" onClick={() => setShowSetup((v) => !v)}>
+                    建立管理員
+                  </button>
+                </p>
+              )}
+              {showSetup && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="field">
+                    <label htmlFor="admin-email">管理員 EMAIL</label>
+                    <input
+                      id="admin-email"
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button className="btn btn-gold" type="button" onClick={bootstrap} disabled={busy}>
+                    用上面的帳號密碼建立第一個管理員
+                  </button>
+                </div>
+              )}
+            </form>
           </div>
         )}
-      </form>
-    </main>
+
+        <section className="how-card">
+          <h2>如何使用</h2>
+          <ol>
+            <li>點右上角 <strong>登入</strong>，使用管理員或已開通的人員帳號</li>
+            <li>管理員／專案領導新增人員與任務，並填寫當前狀態</li>
+            <li>其他成員登入後只會看到自己的任務、甘特圖與週報</li>
+          </ol>
+        </section>
+      </main>
+
+      <footer className="site-footer">版權所有 Albert 工作基地 · V1</footer>
+    </div>
   );
 }
