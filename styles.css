@@ -170,6 +170,113 @@ a:hover {
   font-size: 13px;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logout {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.logout:hover {
+  color: var(--ink);
+  border-color: var(--gold-dim);
+}
+
+html:not(.is-authed) .wrap {
+  display: none;
+}
+
+html.is-authed .gate {
+  display: none;
+}
+
+.gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: calc(28px + var(--safe-t)) 20px calc(48px + var(--safe-b));
+}
+
+.gate-card {
+  width: min(420px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 32px 28px 28px;
+}
+
+.gate-card h1 {
+  font-family: "Noto Serif TC", Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 12px 0 8px;
+}
+
+.gate-card p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field label {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: var(--gold-dim);
+}
+
+.gate-error {
+  min-height: 1.4em;
+  margin: 0 0 12px;
+  color: #e8a090;
+  font-size: 13px;
+}
+
+.gate-submit {
+  width: 100%;
+  border: 1px solid var(--gold-dim);
+  background: transparent;
+  color: var(--gold);
+  font: inherit;
+  letter-spacing: 0.14em;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.gate-submit:hover {
+  background: rgba(232, 195, 106, 0.08);
+}
+
 @media (max-width: 800px) {
   .grid,
   .about {

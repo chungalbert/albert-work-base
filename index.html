@@ -11,15 +11,41 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600&family=Noto+Serif+TC:wght@600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    if (sessionStorage.getItem("awb-auth") === "1") {
+      document.documentElement.classList.add("is-authed");
+    }
+  </script>
 </head>
 <body>
+  <main class="gate" id="gate">
+    <form class="gate-card" id="login-form" autocomplete="on">
+      <span class="mark" aria-hidden="true">A</span>
+      <h1>Albert的工作基地</h1>
+      <p>請登入後進入。</p>
+      <div class="field">
+        <label for="account">帳號</label>
+        <input id="account" name="username" type="text" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="password">密碼</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </div>
+      <p class="gate-error" id="login-error" role="alert"></p>
+      <button class="gate-submit" type="submit">進入</button>
+    </form>
+  </main>
+
   <div class="wrap">
     <header class="top">
       <a class="brand" href="./">
         <span class="mark" aria-hidden="true">A</span>
         <span class="brand-name">ALBERT</span>
       </a>
-      <span class="pill">初版 · 2026</span>
+      <div class="top-actions">
+        <span class="pill">初版 · 2026</span>
+        <button class="logout" id="logout" type="button">登出</button>
+      </div>
     </header>
 
     <section class="hero">
@@ -54,5 +80,6 @@
 
     <footer class="foot">Albert的工作基地 · 初版</footer>
   </div>
+  <script src="auth.js"></script>
 </body>
 </html>
