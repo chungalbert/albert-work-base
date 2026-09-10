@@ -59,7 +59,9 @@ export function ReportPage() {
       <div className="page-head no-print">
         <div>
           <h1>週報</h1>
-          <p>本週一到日（台北）· {role === "leader" ? "專案全員" : "我的任務"}</p>
+          <p>
+            {project ? `「${project.name}」` : "專案"} · 本週一到日（台北）· {role === "leader" ? "專案全員" : "我的任務"}
+          </p>
         </div>
         <div className="row">
           <button className="btn" type="button" onClick={() => window.print()}>列印 / 存 PDF</button>

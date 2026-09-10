@@ -58,11 +58,13 @@ export function TasksPage() {
     <section>
       <div className="page-head">
         <div>
-          <h1>任務</h1>
+          <h1>{project ? `${project.name} 的任務` : "任務"}</h1>
           <p>
-            {canManage
-              ? "可新增、指派與改 Deadline。專案成員登入後只會看到自己的任務。"
-              : "這是指派給你的任務，可以改狀態與日期。"}
+            {!project
+              ? "請先在右上角或專案頁選一個專案。新增的任務只會進目前專案。"
+              : canManage
+              ? `只顯示「${project.name}」的任務。切換右上角專案可看其他專案。`
+              : `這是「${project.name}」裡指派給你的任務。`}
           </p>
         </div>
       </div>
@@ -101,7 +103,9 @@ export function TasksPage() {
             </div>
           </div>
           <p className="error">{error}</p>
-          <button className="btn btn-gold" type="submit" disabled={!project}>新增任務</button>
+          <button className="btn btn-gold" type="submit" disabled={!project}>
+            {project ? `新增到「${project.name}」` : "請先選專案"}
+          </button>
         </form>
       )}
 

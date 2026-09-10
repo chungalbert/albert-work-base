@@ -7,6 +7,7 @@ interface StoreValue {
   projects: Project[];
   profiles: Profile[];
   members: ProjectMember[];
+  allTasks: Task[];
   tasks: Task[];
   projectId: string | null;
   project: Project | null;
@@ -22,48 +23,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!user) return;
-    const [nextProjects, nextProfiles] = await Promise.all([
+    const [nextProjects, nextProfiles, nextAllTasks] = await Promise.all([
       api.listProjects(),
       api.listProfiles(),
+      api.allTasks(),
     ]);
+    const visible = new Set(nextProjects.map((project) => project.id));
     setProjects(nextProjects);
     setProfiles(nextProfiles);
-    const selected = projectId && nextProjects.some((p) => p.id === projectId)
-      ? projectId
-      : nextProjects[0]?.id ?? null;
-    if (selected !== projectId) setProjectId(selected);
-    if (selected) {
-      const [nextMembers, nextTasks] = await Promise.all([
-        api.listMembers(selected),
-        api.listTasks(selected),
-      ]);
-      setMembers(nextMembers);
-      setTasks(nextTasks);
-    } else {
-      setMembers([]);
-      setTasks([]);
-    }
-  }, [user, projectId]);
+    setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
+    setProjectId((current) =>
+      current && visible.has(current) ? current : nextProjects[0]?.id ?? null,
+    );
+  }, [user]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const project = projects.find((p) => p.id === projectId) ?? null;
+  useEffect(() => {
+    if (!user || !projectId) {
+      setMembers([]);
+      return;
+    }
+    void api.listMembers(projectId).then(setMembers);
+  }, [user, projectId]);
+
+  const project = projects.find((item) => item.id === projectId) ?? null;
+  const tasks = useMemo(
+    () => allTasks.filter((task) => task.project_id === projectId),
+    [allTasks, projectId],
+  );
   const role = user?.is_admin
     ? "leader"
-    : members.find((m) => m.user_id === user?.id)?.role ?? null;
+    : members.find((member) => member.user_id === user?.id)?.role ?? null;
 
   const value = useMemo<StoreValue>(
     () => ({
       projects,
       profiles,
       members,
+      allTasks,
       tasks,
       projectId,
       project,
@@ -71,7 +76,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProjectId,
       reload,
     }),
-    [projects, profiles, members, tasks, projectId, project, role, reload],
+    [projects, profiles, members, allTasks, tasks, projectId, project, role, reload],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

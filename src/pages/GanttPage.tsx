@@ -21,7 +21,7 @@ function labelWeeks(root: HTMLElement, gantt: GanttChart) {
 }
 
 export function GanttPage() {
-  const { tasks, reload, role } = useStore();
+  const { tasks, reload, role, project } = useStore();
   const { user } = useAuth();
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<GanttChart | null>(null);
@@ -64,8 +64,8 @@ export function GanttPage() {
     <section>
       <div className="page-head">
         <div>
-          <h1>甘特圖</h1>
-          <p>以週為單位顯示。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。</p>
+          <h1>{project ? `${project.name} 甘特圖` : "甘特圖"}</h1>
+          <p>以週為單位顯示目前專案的任務。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。</p>
         </div>
         <div className="ww-badge" aria-label={`現在是 ${nowWW}`}>
           <span className="ww-kicker">現在是</span>

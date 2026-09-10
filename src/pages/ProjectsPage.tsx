@@ -3,10 +3,17 @@ import { api } from "../lib/api";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
 import { roleLabel } from "../lib/roles";
+import type { Task } from "../lib/types";
+
+function statusLabel(status: Task["status"]) {
+  if (status === "done") return "完成";
+  if (status === "doing") return "進行中";
+  return "未開始";
+}
 
 export function ProjectsPage() {
   const { user } = useAuth();
-  const { projects, setProjectId, projectId, reload, role } = useStore();
+  const { projects, setProjectId, projectId, reload, role, allTasks, profiles } = useStore();
   const canCreate = Boolean(user?.is_admin || role === "leader");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -26,47 +33,68 @@ export function ProjectsPage() {
     }
   };
 
+  const nameOf = (id: string | null) => profiles.find((profile) => profile.id === id)?.display_name ?? "未指派";
+
   return (
     <section>
       <div className="page-head">
         <div>
           <h1>專案</h1>
-          <p>同一個帳號可以在不同專案當領導或成員。登入後看到的功能依角色而定。</p>
+          <p>任務屬於專案。A 專案只會看到 A 的任務，切換到 B 專案才會看到 B 的任務。</p>
         </div>
       </div>
-      <div className="grid-2">
-        <div className="panel">
-          <h2 style={{ marginTop: 0 }}>現有專案</h2>
-          {projects.length === 0 && <p className="hint">還沒有專案，先在右側新增一個。</p>}
-          <ul>
-            {projects.map((project) => (
-              <li key={project.id}>
-                <button
-                  className={project.id === projectId ? "btn btn-gold" : "btn"}
-                  onClick={() => setProjectId(project.id)}
-                >
-                  {project.name}
-                </button>
-                <span className="hint" style={{ marginLeft: 8 }}>{project.description}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+
+      <div className="project-stack">
+        {projects.length === 0 && <p className="hint">還沒有專案，先新增一個。</p>}
+        {projects.map((project) => {
+          const nested = allTasks.filter((task) => task.project_id === project.id);
+          const current = project.id === projectId;
+          return (
+            <article key={project.id} className={current ? "panel project-block current" : "panel project-block"}>
+              <div className="project-block-head">
+                <div>
+                  <h2>{project.name}</h2>
+                  {project.description && <p className="hint">{project.description}</p>}
+                </div>
+                {current ? (
+                  <span className="ok-pill">目前專案</span>
+                ) : (
+                  <button className="btn" type="button" onClick={() => setProjectId(project.id)}>
+                    切換到此專案
+                  </button>
+                )}
+              </div>
+              {nested.length === 0 ? (
+                <p className="hint" style={{ marginTop: 12 }}>這個專案還沒有任務。</p>
+              ) : (
+                <ul className="project-task-list">
+                  {nested.map((task) => (
+                    <li key={task.id}>
+                      {task.title}
+                      <span className="hint"> · {nameOf(task.assignee_id)} · {task.start_date} → {task.due_date} · {statusLabel(task.status)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          );
+        })}
+
         {canCreate ? (
-        <form className="panel" onSubmit={onCreate}>
-          <h2 style={{ marginTop: 0 }}>新增專案</h2>
-          <div className="field">
-            <label htmlFor="proj-name">名稱</label>
-            <input id="proj-name" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="field">
-            <label htmlFor="proj-desc">說明</label>
-            <textarea id="proj-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-          </div>
-          <p className="error">{error}</p>
-          <button className="btn btn-gold" type="submit">建立（你會成為專案領導）</button>
-          <p className="hint" style={{ marginTop: 12 }}>目前身份：{roleLabel(Boolean(user?.is_admin), role)}</p>
-        </form>
+          <form className="panel" onSubmit={onCreate}>
+            <h2 style={{ marginTop: 0 }}>新增專案</h2>
+            <div className="field">
+              <label htmlFor="proj-name">名稱</label>
+              <input id="proj-name" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label htmlFor="proj-desc">說明</label>
+              <textarea id="proj-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            </div>
+            <p className="error">{error}</p>
+            <button className="btn btn-gold" type="submit">建立（你會成為專案領導）</button>
+            <p className="hint" style={{ marginTop: 12 }}>目前身份：{roleLabel(Boolean(user?.is_admin), role)}</p>
+          </form>
         ) : (
           <div className="panel">
             <h2 style={{ marginTop: 0 }}>你的權限</h2>

@@ -221,7 +221,11 @@ export const localApi = {
   },
 
   allTasks(): Task[] {
-    return load().tasks.map((t) => ({ ...t, note: t.note ?? "" }));
+    const store = load();
+    const visible = new Set(localApi.listProjects().map((project) => project.id));
+    return store.tasks
+      .filter((task) => visible.has(task.project_id))
+      .map((task) => ({ ...task, note: task.note ?? "" }));
   },
 };
 
