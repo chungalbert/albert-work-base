@@ -13,11 +13,15 @@ async function sha256(text) {
 function enterSite() {
   sessionStorage.setItem(AUTH_KEY, "1");
   document.documentElement.classList.add("is-authed");
+  document.getElementById("app").hidden = false;
+  document.getElementById("gate").hidden = true;
 }
 
 function leaveSite() {
   sessionStorage.removeItem(AUTH_KEY);
   document.documentElement.classList.remove("is-authed");
+  document.getElementById("app").hidden = true;
+  document.getElementById("gate").hidden = false;
 }
 
 const form = document.getElementById("login-form");

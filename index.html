@@ -10,10 +10,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600&family=Noto+Serif+TC:wght@600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <script>
     if (sessionStorage.getItem("awb-auth") === "1") {
       document.documentElement.classList.add("is-authed");
+      document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("app").hidden = false;
+        document.getElementById("gate").hidden = true;
+      });
     }
   </script>
 </head>
@@ -36,7 +40,7 @@
     </form>
   </main>
 
-  <div class="wrap">
+  <div class="wrap" id="app" hidden>
     <header class="top">
       <a class="brand" href="./">
         <span class="mark" aria-hidden="true">A</span>
@@ -80,6 +84,6 @@
 
     <footer class="foot">Albert的工作基地 · 初版</footer>
   </div>
-  <script src="auth.js"></script>
+  <script src="auth.js?v=2"></script>
 </body>
 </html>
