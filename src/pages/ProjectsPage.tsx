@@ -13,11 +13,12 @@ function statusLabel(status: Task["status"]) {
 
 export function ProjectsPage() {
   const { user } = useAuth();
-  const { projects, setProjectId, projectId, reload, role, allTasks, profiles } = useStore();
+  const { projects, setProjectId, projectId, reload, role, allTasks, profiles, leaderProjectIds } = useStore();
   const canCreate = Boolean(user?.is_admin || role === "leader");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -33,6 +34,21 @@ export function ProjectsPage() {
     }
   };
 
+  const onDelete = async (id: string, projectName: string) => {
+    const ok = window.confirm(`確定刪除「${projectName}」？這個專案的任務與成員關係會一併刪除，無法復原。`);
+    if (!ok) return;
+    setError("");
+    setBusyId(id);
+    try {
+      await api.deleteProject(id);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const nameOf = (id: string | null) => profiles.find((profile) => profile.id === id)?.display_name ?? "未指派";
 
   return (
@@ -40,9 +56,11 @@ export function ProjectsPage() {
       <div className="page-head">
         <div>
           <h1>專案</h1>
-          <p>任務屬於專案。A 專案只會看到 A 的任務，切換到 B 專案才會看到 B 的任務。</p>
+          <p>任務屬於專案。A 專案只會看到 A 的任務，切換到 B 專案才會看到 B 的任務。專案領導可刪除自己的專案。</p>
         </div>
       </div>
+
+      {error && <p className="error">{error}</p>}
 
       <div className="project-stack">
         {projects.length === 0 && <p className="hint">還沒有專案，先新增一個。</p>}
@@ -56,13 +74,25 @@ export function ProjectsPage() {
                   <h2>{project.name}</h2>
                   {project.description && <p className="hint">{project.description}</p>}
                 </div>
-                {current ? (
-                  <span className="ok-pill">目前專案</span>
-                ) : (
-                  <button className="btn" type="button" onClick={() => setProjectId(project.id)}>
-                    切換到此專案
-                  </button>
-                )}
+                <div className="row">
+                  {current ? (
+                    <span className="ok-pill">目前專案</span>
+                  ) : (
+                    <button className="btn" type="button" onClick={() => setProjectId(project.id)}>
+                      切換到此專案
+                    </button>
+                  )}
+                  {leaderProjectIds.includes(project.id) && (
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      disabled={busyId === project.id}
+                      onClick={() => void onDelete(project.id, project.name)}
+                    >
+                      {busyId === project.id ? "刪除中…" : "刪除專案"}
+                    </button>
+                  )}
+                </div>
               </div>
               {nested.length === 0 ? (
                 <p className="hint" style={{ marginTop: 12 }}>這個專案還沒有任務。</p>
@@ -91,7 +121,6 @@ export function ProjectsPage() {
               <label htmlFor="proj-desc">說明</label>
               <textarea id="proj-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
             </div>
-            <p className="error">{error}</p>
             <button className="btn btn-gold" type="submit">建立（你會成為專案領導）</button>
             <p className="hint" style={{ marginTop: 12 }}>目前身份：{roleLabel(Boolean(user?.is_admin), role)}</p>
           </form>

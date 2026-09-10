@@ -88,6 +88,27 @@ export const cloudApi = {
     return data as Project;
   },
 
+  async listLeaderProjectIds(): Promise<string[]> {
+    const me = await cloudApi.currentUser();
+    if (!me) return [];
+    if (me.is_admin) {
+      const projects = await cloudApi.listProjects();
+      return projects.map((p) => p.id);
+    }
+    const { data, error } = await sb()
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", me.id)
+      .eq("role", "leader");
+    if (error) throw error;
+    return (data ?? []).map((row: { project_id: string }) => row.project_id);
+  },
+
+  async deleteProject(id: string) {
+    const { error } = await sb().from("projects").delete().eq("id", id);
+    if (error) throw error;
+  },
+
   async listMembers(projectId: string): Promise<ProjectMember[]> {
     const { data, error } = await sb()
       .from("project_members")

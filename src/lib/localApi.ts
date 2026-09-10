@@ -124,6 +124,25 @@ export const localApi = {
     return project;
   },
 
+  listLeaderProjectIds(): string[] {
+    const store = load();
+    const me = store.sessionUserId;
+    const user = store.profiles.find((p) => p.id === me);
+    if (user?.is_admin) return store.projects.map((p) => p.id);
+    return store.members.filter((m) => m.user_id === me && m.role === "leader").map((m) => m.project_id);
+  },
+
+  deleteProject(id: string) {
+    if (localApi.myRole(id) !== "leader") {
+      throw new Error("只有專案領導或管理員可以刪除專案");
+    }
+    const store = load();
+    store.tasks = store.tasks.filter((t) => t.project_id !== id);
+    store.members = store.members.filter((m) => m.project_id !== id);
+    store.projects = store.projects.filter((p) => p.id !== id);
+    save(store);
+  },
+
   listMembers(projectId: string): ProjectMember[] {
     return load().members.filter((m) => m.project_id === projectId);
   },

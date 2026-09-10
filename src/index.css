@@ -288,6 +288,8 @@ select.proj-select {
 .btn:hover, .logout:hover, .page-head button:hover { color: var(--ink); }
 .btn-gold { border-color: #3b82f6; color: #93c5fd; }
 .btn-gold:hover { background: var(--glow); }
+.btn-danger { border-color: #7f1d1d; color: #fca5a5; }
+.btn-danger:hover { background: rgba(248, 113, 113, 0.12); color: #fecaca; }
 
 .nav { display: none; }
 

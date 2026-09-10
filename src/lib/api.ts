@@ -32,6 +32,14 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.createProject(name, description);
     return localApi.createProject(name, description);
   },
+  async listLeaderProjectIds(): Promise<string[]> {
+    if (hasSupabaseConfig()) return cloudApi.listLeaderProjectIds();
+    return localApi.listLeaderProjectIds();
+  },
+  async deleteProject(id: string) {
+    if (hasSupabaseConfig()) return cloudApi.deleteProject(id);
+    localApi.deleteProject(id);
+  },
   async listMembers(projectId: string): Promise<ProjectMember[]> {
     if (hasSupabaseConfig()) return cloudApi.listMembers(projectId);
     return localApi.listMembers(projectId);

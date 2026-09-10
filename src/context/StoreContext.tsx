@@ -12,6 +12,7 @@ interface StoreValue {
   projectId: string | null;
   project: Project | null;
   role: Role | null;
+  leaderProjectIds: string[];
   setProjectId: (id: string) => void;
   reload: () => Promise<void>;
 }
@@ -25,20 +26,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [leaderProjectIds, setLeaderProjectIds] = useState<string[]>([]);
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
   const reload = useCallback(async () => {
     if (!user) return;
-    const [nextProjects, nextProfiles, nextAllTasks] = await Promise.all([
+    const [nextProjects, nextProfiles, nextAllTasks, nextLeaderIds] = await Promise.all([
       api.listProjects(),
       api.listProfiles(),
       api.allTasks(),
+      api.listLeaderProjectIds(),
     ]);
     const visible = new Set(nextProjects.map((project) => project.id));
     setProjects(nextProjects);
     setProfiles(nextProfiles);
     setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
+    setLeaderProjectIds(nextLeaderIds);
     const selected =
       projectIdRef.current && visible.has(projectIdRef.current)
         ? projectIdRef.current
@@ -79,10 +83,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       projectId,
       project,
       role,
+      leaderProjectIds,
       setProjectId,
       reload,
     }),
-    [projects, profiles, members, allTasks, tasks, projectId, project, role, reload],
+    [projects, profiles, members, allTasks, tasks, projectId, project, role, leaderProjectIds, reload],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
