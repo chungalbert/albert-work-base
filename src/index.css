@@ -1,0 +1,262 @@
+:root {
+  --bg: #12110f;
+  --paper: #1b1916;
+  --ink: #f3ece0;
+  --muted: #a79d8d;
+  --line: #2e2a24;
+  --gold: #e8c36a;
+  --gold-dim: #b8943d;
+  --danger: #e8a090;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgba(232, 195, 106, 0.08), transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a { color: var(--gold); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: calc(24px + var(--safe-t)) 0 calc(48px + var(--safe-b));
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mark {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--gold-dim);
+  display: grid;
+  place-items: center;
+  font-family: "Noto Serif TC", Georgia, serif;
+  font-size: 20px;
+  color: var(--gold);
+}
+
+.brand-name { font-size: 14px; letter-spacing: 0.08em; }
+
+.pill {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  padding: 6px 10px;
+}
+
+.top-actions, .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.logout, .btn, .nav button, .page-head button {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.logout:hover, .btn:hover, .nav button:hover {
+  color: var(--ink);
+  border-color: var(--gold-dim);
+}
+
+.btn-gold {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.btn-gold:hover { background: rgba(232, 195, 106, 0.08); }
+
+.nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.nav button.on {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.page-head h1 {
+  font-family: "Noto Serif TC", Georgia, serif;
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.page-head p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.card, .panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 18px;
+}
+
+.gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: calc(28px + var(--safe-t)) 20px calc(48px + var(--safe-b));
+}
+
+.gate-card {
+  width: min(420px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 32px 28px 28px;
+}
+
+.gate-card h1 {
+  font-family: "Noto Serif TC", Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 12px 0 8px;
+}
+
+.gate-card p { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+
+.field { display: grid; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 12px; letter-spacing: 0.12em; color: var(--muted); }
+
+.field input, .field select, .field textarea, .table input, .table select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--gold-dim);
+}
+
+.gate-error, .error { min-height: 1.4em; color: var(--danger); font-size: 13px; }
+.hint { color: var(--muted); font-size: 13px; }
+
+.gate-submit {
+  width: 100%;
+  border: 1px solid var(--gold-dim);
+  background: transparent;
+  color: var(--gold);
+  letter-spacing: 0.14em;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.gate-submit:hover { background: rgba(232, 195, 106, 0.08); }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; letter-spacing: 0.08em; }
+
+.alerts {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.alerts h2 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0.1em; color: var(--gold); }
+.alerts li { color: var(--muted); font-size: 14px; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.gantt-box {
+  overflow-x: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 12px;
+}
+
+.gantt-box .gantt .bar-wrapper .bar { fill: #b8943d; }
+.gantt-box .gantt .bar-progress { fill: #e8c36a; }
+.gantt-box .gantt .grid-header, .gantt-box .gantt .grid-row { fill: #1b1916; }
+.gantt-box .gantt .tick { stroke: #2e2a24; }
+.gantt-box .gantt .today-highlight { fill: rgba(232, 195, 106, 0.12); }
+.gantt-box .gantt text { fill: #f3ece0; }
+
+.report {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 28px;
+}
+
+.report h1 { font-family: "Noto Serif TC", Georgia, serif; margin: 0 0 8px; }
+.report h2 { font-size: 16px; margin: 24px 0 8px; color: var(--gold); }
+.report .meta { color: var(--muted); font-size: 13px; }
+
+.setup ol { padding-left: 18px; color: var(--muted); }
+.setup code { color: var(--gold); }
+
+.foot { margin-top: 40px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 800px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .page-head h1 { font-size: 26px; }
+}
+
+@media print {
+  .top, .nav, .page-head button, .alerts, .logout, .no-print { display: none !important; }
+  body { background: white; color: black; }
+  .report { border: none; }
+}

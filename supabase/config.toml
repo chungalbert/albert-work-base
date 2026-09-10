@@ -1,0 +1,5 @@
+[functions.invite-members]
+verify_jwt = true
+
+[functions.send-reminders]
+verify_jwt = false
