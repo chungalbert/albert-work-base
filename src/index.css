@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0b1220;
   --header: #0e1628;
   --paper: #151d2e;
@@ -329,7 +330,8 @@ select.proj-select {
 .field { display: grid; gap: 6px; margin-bottom: 14px; }
 .field label { font-size: 12px; color: var(--muted); }
 
-.field input, .field select, .field textarea, .table input, .table select {
+.field input, .field select, .field textarea,
+.table input, .table select, .table-wrap input, .table-wrap select {
   width: 100%;
   border: 1px solid var(--line);
   background: #0b1220;
@@ -338,6 +340,21 @@ select.proj-select {
   padding: 10px 12px;
   border-radius: 10px;
   outline: none;
+  color-scheme: dark;
+}
+
+input[type="date"] {
+  min-width: 12.5rem;
+  color: var(--ink);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.table select {
+  min-width: 7rem;
 }
 
 .field input:focus, .field select:focus, .field textarea:focus {

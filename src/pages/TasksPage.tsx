@@ -107,7 +107,7 @@ export function TasksPage() {
 
       <div className="panel">
         <div className="table-wrap">
-          <table>
+          <table className="table">
             <thead>
               <tr>
                 <th>任務</th>
