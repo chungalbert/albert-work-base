@@ -192,7 +192,9 @@ export const localApi = {
   },
 
   listTasks(projectId: string): Task[] {
-    return load().tasks.filter((t) => t.project_id === projectId);
+    return load()
+      .tasks.filter((t) => t.project_id === projectId)
+      .map((t) => ({ ...t, note: t.note ?? "" }));
   },
 
   createTask(input: Omit<Task, "id">): Task {
@@ -219,7 +221,7 @@ export const localApi = {
   },
 
   allTasks(): Task[] {
-    return load().tasks;
+    return load().tasks.map((t) => ({ ...t, note: t.note ?? "" }));
   },
 };
 
@@ -244,6 +246,7 @@ export function ensureSampleIfEmpty() {
     start_date: start,
     due_date: start,
     status: "doing",
+    note: "",
   });
   save(store);
 }

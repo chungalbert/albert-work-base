@@ -46,6 +46,7 @@ export function ReportPage() {
           {items.map((t) => (
             <li key={t.id}>
               {t.title} · {nameOf(t.assignee_id)} · Deadline {t.due_date} · {labelStatus(t.status)}
+              {t.note ? ` · ${t.note}` : ""}
             </li>
           ))}
         </ul>

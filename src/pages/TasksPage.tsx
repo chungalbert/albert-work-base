@@ -18,6 +18,7 @@ export function TasksPage() {
   const [assignee, setAssignee] = useState(user?.id ?? "");
   const [start, setStart] = useState(todayISO());
   const [due, setDue] = useState(addDaysISO(todayISO(), 3));
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
   const people = members
@@ -38,8 +39,10 @@ export function TasksPage() {
         start_date: start,
         due_date: due < start ? start : due,
         status: "todo",
+        note: note.trim(),
       });
       setTitle("");
+      setNote("");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "新增失敗");
@@ -88,6 +91,14 @@ export function TasksPage() {
               <label>Deadline</label>
               <input type="date" value={due} onChange={(e) => setDue(e.target.value)} required />
             </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label>當前狀態</label>
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="例如：等零件、已送審、測試中"
+              />
+            </div>
           </div>
           <p className="error">{error}</p>
           <button className="btn btn-gold" type="submit" disabled={!project}>新增任務</button>
@@ -103,7 +114,8 @@ export function TasksPage() {
                 <th>負責人</th>
                 <th>開始</th>
                 <th>Deadline</th>
-                <th>狀態</th>
+                <th>進度</th>
+                <th>當前狀態</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
@@ -141,6 +153,19 @@ export function TasksPage() {
                           <option key={s.id} value={s.id}>{s.label}</option>
                         ))}
                       </select>
+                    </td>
+                    <td>
+                      <input
+                        className="note-input"
+                        defaultValue={task.note ?? ""}
+                        key={`${task.id}-note-${task.note ?? ""}`}
+                        disabled={!canEdit}
+                        placeholder="輸入當前狀態"
+                        onBlur={(e) => {
+                          const value = e.target.value.trim();
+                          if (value !== (task.note ?? "")) void patch(task.id, { note: value });
+                        }}
+                      />
                     </td>
                     {canManage && (
                       <td>

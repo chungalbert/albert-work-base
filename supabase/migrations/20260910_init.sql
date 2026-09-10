@@ -35,6 +35,7 @@ create table if not exists public.tasks (
   start_date date not null,
   due_date date not null,
   status text not null default 'todo' check (status in ('todo', 'doing', 'done')),
+  note text not null default '',
   created_at timestamptz not null default now()
 );
 

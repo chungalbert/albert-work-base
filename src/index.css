@@ -204,6 +204,7 @@ a:hover { text-decoration: underline; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { color: var(--muted); font-weight: 500; font-size: 12px; letter-spacing: 0.08em; }
+.note-input { min-width: 220px; }
 
 .alerts {
   border: 1px solid var(--line);

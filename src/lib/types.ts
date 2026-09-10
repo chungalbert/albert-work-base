@@ -33,6 +33,7 @@ export interface Task {
   start_date: string;
   due_date: string;
   status: TaskStatus;
+  note: string;
 }
 
 export interface InviteInput {
