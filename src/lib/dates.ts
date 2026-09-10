@@ -37,3 +37,19 @@ export function endOfWeekSunday(iso = todayISO()): string {
 export function inRange(iso: string, start: string, end: string): boolean {
   return iso >= start && iso <= end;
 }
+
+/** ISO-8601 week (Monday start). Returns calendar year of that week plus 1–53. */
+export function isoWeekParts(iso = todayISO()): { year: number; week: number } {
+  const local = parseISODate(iso);
+  const utc = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
+  const dayNum = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
+  const year = utc.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { year, week };
+}
+
+export function formatWW(iso = todayISO()): string {
+  return `WW${String(isoWeekParts(iso).week).padStart(2, "0")}`;
+}
