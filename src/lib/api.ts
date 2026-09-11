@@ -18,10 +18,12 @@ export const api = {
   },
   async currentUser(): Promise<Profile | null> {
     if (hasSupabaseConfig()) return cloudApi.currentUser();
+    await localApi.ensurePasswordScheme();
     return localApi.currentUser();
   },
   async listProfiles(): Promise<Profile[]> {
     if (hasSupabaseConfig()) return cloudApi.listProfiles();
+    await localApi.ensurePasswordScheme();
     return localApi.listProfiles();
   },
   async listProjects(): Promise<Project[]> {

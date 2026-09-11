@@ -21,6 +21,7 @@ interface Store {
   projects: Project[];
   members: ProjectMember[];
   tasks: Task[];
+  passwordScheme?: number;
 }
 
 const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -60,29 +61,52 @@ function save(store: Store) {
   localStorage.setItem(KEY, JSON.stringify(store));
 }
 
+const PASSWORD_SCHEME = 2;
+
+async function ensurePasswordScheme() {
+  const store = load();
+  if (store.passwordScheme === PASSWORD_SCHEME) return;
+  for (const profile of store.profiles) {
+    if (profile.is_admin) continue;
+    store.passwordHashes[profile.id] = await sha256(`${profile.username}:${DEFAULT_PASSWORD}`);
+  }
+  store.passwordScheme = PASSWORD_SCHEME;
+  save(store);
+}
+
+async function passwordMatches(store: Store, profile: Profile, password: string) {
+  const stored = store.passwordHashes[profile.id];
+  if (!stored) return false;
+  const byUser = await sha256(`${profile.username}:${password}`);
+  const byEmail = await sha256(`${profile.email}:${password}`);
+  return stored === byUser || stored === byEmail;
+}
+
 export const localApi = {
   load,
+  ensurePasswordScheme,
 
   async signIn(identifier: string, password: string): Promise<Profile> {
+    await ensurePasswordScheme();
     const store = load();
     const key = identifier.trim().toLowerCase();
-    const profile = store.profiles.find(
-      (p) => p.username.toLowerCase() === key || p.email.toLowerCase() === key,
+    const matches = store.profiles.filter(
+      (p) =>
+        p.username.toLowerCase() === key ||
+        p.email.toLowerCase() === key ||
+        p.display_name.trim().toLowerCase() === key,
     );
-    if (!profile) throw new Error("帳號或密碼不正確。");
-    const hash = await sha256(`${profile.username}:${password}`);
-    const byEmail = await sha256(`${profile.email}:${password}`);
-    const alt = await sha256(`${identifier.trim()}:${password}`);
-    if (
-      store.passwordHashes[profile.id] !== hash &&
-      store.passwordHashes[profile.id] !== byEmail &&
-      store.passwordHashes[profile.id] !== alt
-    ) {
-      throw new Error("帳號或密碼不正確。");
+    if (matches.length === 0) {
+      throw new Error("找不到這個帳號。請填人員表上的「帳號」或 EMAIL，例如 lay 或 lay_zhang。");
     }
-    store.sessionUserId = profile.id;
-    save(store);
-    return profile;
+    for (const profile of matches) {
+      if (await passwordMatches(store, profile, password)) {
+        store.sessionUserId = profile.id;
+        save(store);
+        return profile;
+      }
+    }
+    throw new Error("密碼不正確。預設密碼是 123456，請管理員到人員頁按「重設為 123456」。");
   },
 
   signOut() {
