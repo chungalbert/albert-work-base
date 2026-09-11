@@ -9,7 +9,7 @@ import type {
   Role,
   Task,
 } from "./types";
-import { randomPassword, sha256, usernameFromEmail } from "./util";
+import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
 const ADMIN_HASH = "4dcaa92c01008dd30fa65408b02c8b400a00e6c6f20065fbf3be39c908c4ed20";
@@ -71,8 +71,13 @@ export const localApi = {
     );
     if (!profile) throw new Error("帳號或密碼不正確。");
     const hash = await sha256(`${profile.username}:${password}`);
+    const byEmail = await sha256(`${profile.email}:${password}`);
     const alt = await sha256(`${identifier.trim()}:${password}`);
-    if (store.passwordHashes[profile.id] !== hash && store.passwordHashes[profile.id] !== alt) {
+    if (
+      store.passwordHashes[profile.id] !== hash &&
+      store.passwordHashes[profile.id] !== byEmail &&
+      store.passwordHashes[profile.id] !== alt
+    ) {
       throw new Error("帳號或密碼不正確。");
     }
     store.sessionUserId = profile.id;
@@ -185,7 +190,7 @@ export const localApi = {
       }
       const username = usernameFromEmail(email, taken);
       taken.add(username);
-      const password = randomPassword();
+      const password = DEFAULT_PASSWORD;
       const id = crypto.randomUUID();
       store.profiles.push({
         id,
@@ -205,6 +210,42 @@ export const localApi = {
     }
     save(store);
     return creds;
+  },
+
+  async changePassword(current: string, next: string) {
+    const store = load();
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
+    if (!me) throw new Error("尚未登入");
+    const nextPassword = next.trim();
+    if (nextPassword.length < 6) throw new Error("新密碼至少 6 碼");
+    const currentHash = await sha256(`${me.username}:${current}`);
+    const currentByEmail = await sha256(`${me.email}:${current}`);
+    const stored = store.passwordHashes[me.id];
+    if (stored !== currentHash && stored !== currentByEmail) {
+      throw new Error("目前密碼不正確");
+    }
+    store.passwordHashes[me.id] = await sha256(`${me.username}:${nextPassword}`);
+    save(store);
+  },
+
+  async resetPassword(userId: string) {
+    const store = load();
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
+    if (!me) throw new Error("尚未登入");
+    const target = store.profiles.find((p) => p.id === userId);
+    if (!target) throw new Error("找不到這位人員");
+    if (target.is_admin && !me.is_admin) throw new Error("不能重設管理員密碼");
+    const canReset =
+      Boolean(me.is_admin) ||
+      store.members.some(
+        (m) =>
+          m.user_id === me.id &&
+          m.role === "leader" &&
+          store.members.some((other) => other.project_id === m.project_id && other.user_id === userId),
+      );
+    if (!canReset) throw new Error("只有專案領導或管理員可以重設密碼");
+    store.passwordHashes[userId] = await sha256(`${target.username}:${DEFAULT_PASSWORD}`);
+    save(store);
   },
 
   addProjectMember(projectId: string, userId: string, role: Role): ProjectMember {
@@ -247,7 +288,7 @@ export const localApi = {
       if (!profile) {
         username = usernameFromEmail(email, taken);
         taken.add(username);
-        password = randomPassword();
+        password = DEFAULT_PASSWORD;
         const id = crypto.randomUUID();
         profile = {
           id,

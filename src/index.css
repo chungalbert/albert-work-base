@@ -125,6 +125,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid #2a3a54;
   border-radius: 12px;
   padding: 4px 4px 4px 14px;
+  flex-wrap: wrap;
 }
 
 .muted-label { color: var(--muted); font-size: 13px; white-space: nowrap; }

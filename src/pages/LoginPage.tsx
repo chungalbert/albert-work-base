@@ -99,11 +99,7 @@ export function LoginPage() {
           <div className="login-overlay" onClick={() => setShowLogin(false)}>
             <form className="login-card gate-card" onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}>
               <h2 style={{ marginTop: 0 }}>登入</h2>
-              <p className="hint">
-                {hasSupabaseConfig()
-                  ? "請用帳號或 EMAIL 登入。權限依帳號角色而定。"
-                  : "請用帳號登入。管理員、專案領導、專案成員看到的功能不同。"}
-              </p>
+              <p className="hint">請用帳號或 EMAIL 登入。新開通人員預設密碼是 123456，登入後可自行修改。</p>
               <div className="field">
                 <label htmlFor="account">帳號</label>
                 <input
@@ -161,7 +157,8 @@ export function LoginPage() {
         <section className="how-card">
           <h2>如何使用</h2>
           <ol>
-            <li>點右上角 <strong>登入</strong>，使用管理員或已開通的人員帳號</li>
+            <li>點右上角 <strong>登入</strong>，使用管理員或已開通的人員帳號（新人員預設密碼 123456）</li>
+            <li>登入後可點右上角 <strong>修改密碼</strong> 自行更換</li>
             <li>管理員／專案領導新增人員與任務，並填寫當前狀態</li>
             <li>其他成員登入後只會看到自己的任務、甘特圖與週報</li>
           </ol>

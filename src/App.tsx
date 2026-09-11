@@ -7,6 +7,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { TasksPage } from "./pages/TasksPage";
 import { ReportPage } from "./pages/ReportPage";
 import { ReminderBanner } from "./components/ReminderBanner";
+import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
 import { roleLabel } from "./lib/roles";
 
@@ -24,6 +25,7 @@ function Shell() {
   const { user, signOut } = useAuth();
   const { projects, projectId, setProjectId, role } = useStore();
   const [view, setView] = useState<ViewId>("projects");
+  const [showPassword, setShowPassword] = useState(false);
   const isLeader = Boolean(user?.is_admin || role === "leader");
   const nav = isLeader ? NAV : NAV.filter((item) => item.id !== "people");
   const currentView = !isLeader && view === "people" ? "projects" : view;
@@ -62,6 +64,7 @@ function Shell() {
             </select>
             <div className="auth-chip">
               <span className="muted-label">{user?.display_name} · {roleLabel(Boolean(user?.is_admin), role)}</span>
+              <button className="btn no-print" type="button" onClick={() => setShowPassword(true)}>修改密碼</button>
               <button className="btn-blue" type="button" onClick={() => void signOut()}>登出</button>
             </div>
           </div>
@@ -80,6 +83,7 @@ function Shell() {
         {currentView === "report" && <ReportPage />}
       </main>
       <footer className="site-footer">版權所有 Albert 工作基地 · V1</footer>
+      {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
     </div>
   );
 }

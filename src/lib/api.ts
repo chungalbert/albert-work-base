@@ -60,6 +60,14 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.inviteMembers(rows);
     return localApi.inviteMembers(rows);
   },
+  async changePassword(current: string, next: string) {
+    if (hasSupabaseConfig()) return cloudApi.changePassword(current, next);
+    return localApi.changePassword(current, next);
+  },
+  async resetPassword(userId: string) {
+    if (hasSupabaseConfig()) return cloudApi.resetPassword(userId);
+    return localApi.resetPassword(userId);
+  },
   async listTasks(projectId: string): Promise<Task[]> {
     if (hasSupabaseConfig()) return cloudApi.listTasks(projectId);
     return localApi.listTasks(projectId);

@@ -150,6 +150,28 @@ export const cloudApi = {
     return data.credentials as CredentialRow[];
   },
 
+  async changePassword(current: string, next: string) {
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    const nextPassword = next.trim();
+    if (nextPassword.length < 6) throw new Error("新密碼至少 6 碼");
+    const { error: check } = await sb().auth.signInWithPassword({
+      email: me.email,
+      password: current,
+    });
+    if (check) throw new Error("目前密碼不正確");
+    const { error } = await sb().auth.updateUser({ password: nextPassword });
+    if (error) throw error;
+  },
+
+  async resetPassword(userId: string) {
+    const { data, error } = await sb().functions.invoke("invite-members", {
+      body: { reset_user_id: userId },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+  },
+
   async listTasks(projectId: string): Promise<Task[]> {
     const { data, error } = await sb()
       .from("tasks")

@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { downloadText, toCsv } from "../lib/util";
+import { downloadText, toCsv, DEFAULT_PASSWORD } from "../lib/util";
 import type { CredentialRow, Role } from "../lib/types";
 import { useStore } from "../context/StoreContext";
 
@@ -22,6 +22,7 @@ export function PeoplePage() {
   const [busy, setBusy] = useState(false);
   const [pickId, setPickId] = useState("");
   const [pickRole, setPickRole] = useState<Role>("member");
+  const [resetId, setResetId] = useState("");
 
   const people = useMemo(() => {
     return members.map((m) => ({
@@ -81,6 +82,20 @@ export function PeoplePage() {
     }
   };
 
+  const resetPassword = async (userId: string, name: string) => {
+    const ok = window.confirm(`將「${name}」的密碼重設為 ${DEFAULT_PASSWORD}？對方之後可用預設密碼登入，再自行修改。`);
+    if (!ok) return;
+    setAddError("");
+    setResetId(userId);
+    try {
+      await api.resetPassword(userId);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "重設失敗");
+    } finally {
+      setResetId("");
+    }
+  };
+
   const download = () => {
     const csv = toCsv([
       ["姓名", "帳號", "EMAIL", "密碼"],
@@ -94,7 +109,7 @@ export function PeoplePage() {
       <div className="page-head">
         <div>
           <h1>人員</h1>
-          <p>開通帳密與加入專案是分開的。先開通帳號，再由專案領導用下拉選單把人加進目前專案。</p>
+          <p>開通帳密與加入專案是分開的。新帳號預設密碼是 {DEFAULT_PASSWORD}，成員登入後可自行修改。</p>
         </div>
       </div>
 
@@ -109,12 +124,13 @@ export function PeoplePage() {
                 <th>EMAIL</th>
                 <th>帳號</th>
                 <th>角色</th>
+                {canManage && <th>密碼</th>}
               </tr>
             </thead>
             <tbody>
               {people.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="hint">這個專案還沒有成員。</td>
+                  <td colSpan={canManage ? 6 : 5} className="hint">這個專案還沒有成員。</td>
                 </tr>
               )}
               {people.map((row) => (
@@ -124,6 +140,22 @@ export function PeoplePage() {
                   <td>{row.profile?.email}</td>
                   <td>{row.profile?.username}</td>
                   <td>{row.role === "leader" ? "專案領導" : "專案成員"}</td>
+                  {canManage && (
+                    <td>
+                      {row.profile?.is_admin ? (
+                        <span className="hint">請自行修改</span>
+                      ) : (
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={resetId === row.user_id}
+                          onClick={() => void resetPassword(row.user_id, row.profile?.display_name ?? "這位人員")}
+                        >
+                          {resetId === row.user_id ? "重設中…" : `重設為 ${DEFAULT_PASSWORD}`}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -166,7 +198,7 @@ export function PeoplePage() {
       {canManage && (
         <form className="panel" onSubmit={createAccounts}>
           <h2 style={{ marginTop: 0 }}>開通帳號（獨立，不加入專案）</h2>
-          <p className="hint">只產生登入帳密。要進專案，請用上面的下拉選單選人。</p>
+          <p className="hint">只產生登入帳密，預設密碼是 {DEFAULT_PASSWORD}。要進專案，請用上面的下拉選單選人。</p>
           <div className="field">
             <label htmlFor="paste">貼上 CSV / TSV（姓名, 單位, EMAIL）</label>
             <textarea id="paste" rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} />
@@ -235,7 +267,7 @@ export function PeoplePage() {
             <h2 style={{ margin: 0 }}>本次產生的 Default 帳密</h2>
             <button className="btn btn-gold" type="button" onClick={download}>下載 CSV</button>
           </div>
-          <p className="hint">只顯示這一次，請立刻下載。這些人還沒進任何專案，請再到上面用下拉選單加入。</p>
+          <p className="hint">只顯示這一次。預設密碼是 {DEFAULT_PASSWORD}。這些人還沒進任何專案，請再到上面用下拉選單加入。</p>
           <div className="table-wrap">
             <table className="table">
               <thead>
