@@ -4,7 +4,7 @@ import { hasSupabaseConfig } from "../lib/util";
 import { api } from "../lib/api";
 
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, refresh } = useAuth();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -30,8 +30,10 @@ export function LoginPage() {
     setError("");
     setBusy(true);
     try {
+      if (!adminEmail.trim()) throw new Error("請填管理員 EMAIL。");
+      if (password.length < 6) throw new Error("密碼至少 6 個字。");
       await api.bootstrapAdmin(account.trim() || "admin", password, adminEmail.trim());
-      setError("已送出註冊。若信箱需驗證，請先到信箱點連結，再回來登入。");
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "建立管理員失敗");
     } finally {
@@ -99,7 +101,7 @@ export function LoginPage() {
           <div className="login-overlay" onClick={() => setShowLogin(false)}>
             <form className="login-card gate-card" onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}>
               <h2 style={{ marginTop: 0 }}>登入</h2>
-              <p className="hint">請填人員表上的「帳號」或 EMAIL（例如 lay、lay_zhang），也可以用姓名。密碼預設 123456。</p>
+              <p className="hint">請填帳號或 EMAIL。第一次請先點「建立管理員」，密碼至少 6 個字，不用驗證信箱。</p>
               <div className="field">
                 <label htmlFor="account">帳號</label>
                 <input

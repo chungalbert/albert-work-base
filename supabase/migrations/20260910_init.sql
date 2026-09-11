@@ -83,7 +83,9 @@ security definer
 set search_path = public
 as $$
   select p.email from public.profiles p
-  where lower(p.username) = lower(identifier) or lower(p.email) = lower(identifier)
+  where lower(p.username) = lower(identifier)
+     or lower(p.email) = lower(identifier)
+     or lower(p.display_name) = lower(identifier)
   limit 1;
 $$;
 

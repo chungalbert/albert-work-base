@@ -28,7 +28,7 @@ export const cloudApi = {
       email = data as string;
     }
     const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw new Error("帳號或密碼不正確。");
+    if (error) throw new Error(error.message === "Invalid login credentials" ? "帳號或密碼不正確。" : error.message);
     const profile = await cloudApi.currentUser();
     if (!profile) throw new Error("找不到個人資料");
     return profile;
@@ -50,18 +50,28 @@ export const cloudApi = {
 
   async bootstrapAdmin(username: string, password: string, email: string) {
     const client = sb();
-    const { error } = await client.auth.signUp({
+    const { data, error } = await client.auth.signUp({
       email,
       password,
       options: {
         data: {
           username,
-          display_name: "Albert",
+          display_name: username,
           unit: "工作基地",
         },
       },
     });
-    if (error) throw error;
+    if (error) throw new Error(error.message);
+    if (!data.session) {
+      const signedIn = await client.auth.signInWithPassword({ email, password });
+      if (signedIn.error) throw new Error(signedIn.error.message);
+    }
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const profile = await cloudApi.currentUser();
+      if (profile) return profile;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error("帳號已建立，請再用同一個帳號或 EMAIL 登入。");
   },
 
   async listProfiles(): Promise<Profile[]> {
