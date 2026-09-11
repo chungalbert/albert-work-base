@@ -172,6 +172,14 @@ export const cloudApi = {
     if (data?.error) throw new Error(data.error);
   },
 
+  async deletePerson(userId: string) {
+    const { data, error } = await sb().functions.invoke("invite-members", {
+      body: { delete_user_id: userId },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+  },
+
   async listTasks(projectId: string): Promise<Task[]> {
     const { data, error } = await sb()
       .from("tasks")

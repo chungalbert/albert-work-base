@@ -248,6 +248,27 @@ export const localApi = {
     save(store);
   },
 
+  deletePerson(userId: string) {
+    const store = load();
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
+    if (!me) throw new Error("尚未登入");
+    const target = store.profiles.find((p) => p.id === userId);
+    if (!target) throw new Error("找不到這位人員");
+    if (target.id === me.id) throw new Error("不能刪除自己");
+    if (target.is_admin) throw new Error("不能刪除管理員");
+    const canDelete =
+      Boolean(me.is_admin) ||
+      store.members.some((m) => m.user_id === me.id && m.role === "leader");
+    if (!canDelete) throw new Error("只有專案領導或管理員可以刪除人員");
+    store.tasks.forEach((task) => {
+      if (task.assignee_id === userId) task.assignee_id = null;
+    });
+    store.members = store.members.filter((m) => m.user_id !== userId);
+    store.profiles = store.profiles.filter((p) => p.id !== userId);
+    delete store.passwordHashes[userId];
+    save(store);
+  },
+
   addProjectMember(projectId: string, userId: string, role: Role): ProjectMember {
     const store = load();
     if (localApi.myRole(projectId) !== "leader") {

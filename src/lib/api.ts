@@ -68,6 +68,10 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.resetPassword(userId);
     return localApi.resetPassword(userId);
   },
+  async deletePerson(userId: string) {
+    if (hasSupabaseConfig()) return cloudApi.deletePerson(userId);
+    localApi.deletePerson(userId);
+  },
   async listTasks(projectId: string): Promise<Task[]> {
     if (hasSupabaseConfig()) return cloudApi.listTasks(projectId);
     return localApi.listTasks(projectId);

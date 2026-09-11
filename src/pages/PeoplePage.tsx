@@ -23,6 +23,7 @@ export function PeoplePage() {
   const [pickId, setPickId] = useState("");
   const [pickRole, setPickRole] = useState<Role>("member");
   const [resetId, setResetId] = useState("");
+  const [deleteId, setDeleteId] = useState("");
 
   const people = useMemo(() => {
     return members.map((m) => ({
@@ -34,6 +35,7 @@ export function PeoplePage() {
   const canManage = role === "leader";
   const memberIds = new Set(members.map((m) => m.user_id));
   const candidates = profiles.filter((p) => !memberIds.has(p.id));
+  const allAccounts = profiles.filter((p) => !p.is_admin);
 
   const applyPaste = () => {
     const parsed = paste
@@ -96,6 +98,43 @@ export function PeoplePage() {
     }
   };
 
+  const deletePerson = async (userId: string, name: string) => {
+    const ok = window.confirm(`確定刪除「${name}」這位人員？帳號會消失，也會從所有專案移除，無法復原。`);
+    if (!ok) return;
+    setAddError("");
+    setDeleteId(userId);
+    try {
+      await api.deletePerson(userId);
+      await reload();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "刪除失敗");
+    } finally {
+      setDeleteId("");
+    }
+  };
+
+  const resetButton = (userId: string, name: string) => (
+    <button
+      className="btn btn-gold"
+      type="button"
+      disabled={resetId === userId || deleteId === userId}
+      onClick={() => void resetPassword(userId, name)}
+    >
+      {resetId === userId ? "重設中…" : `重設為 ${DEFAULT_PASSWORD}`}
+    </button>
+  );
+
+  const deleteButton = (userId: string, name: string) => (
+    <button
+      className="btn btn-danger"
+      type="button"
+      disabled={resetId === userId || deleteId === userId}
+      onClick={() => void deletePerson(userId, name)}
+    >
+      {deleteId === userId ? "刪除中…" : "刪除人員"}
+    </button>
+  );
+
   const download = () => {
     const csv = toCsv([
       ["姓名", "帳號", "EMAIL", "密碼"],
@@ -109,9 +148,46 @@ export function PeoplePage() {
       <div className="page-head">
         <div>
           <h1>人員</h1>
-          <p>開通帳密與加入專案是分開的。新帳號預設密碼是 {DEFAULT_PASSWORD}，成員登入後可自行修改。</p>
+          <p>開通帳密與加入專案是分開的。可在「所有帳號」重設密碼或刪除人員。</p>
         </div>
       </div>
+
+      {canManage && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0 }}>所有帳號</h2>
+          <p className="hint">這裡會列出已開通的人員，不限目前專案。可重設密碼為 {DEFAULT_PASSWORD}，或刪除帳號。</p>
+          {addError && <p className="error">{addError}</p>}
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th>帳號</th>
+                  <th>EMAIL</th>
+                  <th>密碼</th>
+                  <th>刪除</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allAccounts.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="hint">還沒有開通其他人員。</td>
+                  </tr>
+                )}
+                {allAccounts.map((profile) => (
+                  <tr key={profile.id}>
+                    <td>{profile.display_name}</td>
+                    <td>{profile.username}</td>
+                    <td>{profile.email}</td>
+                    <td>{resetButton(profile.id, profile.display_name)}</td>
+                    <td>{deleteButton(profile.id, profile.display_name)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>{project?.name ?? "尚未選擇專案"} 成員</h2>
@@ -145,14 +221,7 @@ export function PeoplePage() {
                       {row.profile?.is_admin ? (
                         <span className="hint">請自行修改</span>
                       ) : (
-                        <button
-                          className="btn"
-                          type="button"
-                          disabled={resetId === row.user_id}
-                          onClick={() => void resetPassword(row.user_id, row.profile?.display_name ?? "這位人員")}
-                        >
-                          {resetId === row.user_id ? "重設中…" : `重設為 ${DEFAULT_PASSWORD}`}
-                        </button>
+                        resetButton(row.user_id, row.profile?.display_name ?? "這位人員")
                       )}
                     </td>
                   )}

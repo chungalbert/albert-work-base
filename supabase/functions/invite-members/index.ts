@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json();
   const resetUserId = typeof body.reset_user_id === "string" ? body.reset_user_id : "";
+  const deleteUserId = typeof body.delete_user_id === "string" ? body.delete_user_id : "";
   const rows = (body.rows ?? []) as Array<{
     display_name: string;
     unit: string;
@@ -91,6 +92,26 @@ Deno.serve(async (req) => {
     }
     const updated = await admin.auth.admin.updateUserById(resetUserId, { password: "123456" });
     if (updated.error) return json({ error: updated.error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (deleteUserId) {
+    if (!canCreateAccounts) return json({ error: "只有專案領導或管理員可以刪除人員" }, 403);
+    if (deleteUserId === userData.user.id) return json({ error: "不能刪除自己" }, 400);
+    const { data: target } = await admin
+      .from("profiles")
+      .select("id,is_admin")
+      .eq("id", deleteUserId)
+      .maybeSingle();
+    if (!target) return json({ error: "找不到這位人員" }, 404);
+    if (target.is_admin) return json({ error: "不能刪除管理員" }, 403);
+    await admin.from("project_members").delete().eq("user_id", deleteUserId);
+    await admin.from("tasks").update({ assignee_id: null }).eq("assignee_id", deleteUserId);
+    await admin.from("projects").update({ created_by: userData.user.id }).eq("created_by", deleteUserId);
+    const removed = await admin.from("profiles").delete().eq("id", deleteUserId);
+    if (removed.error) return json({ error: removed.error.message }, 400);
+    const authRemoved = await admin.auth.admin.deleteUser(deleteUserId);
+    if (authRemoved.error) return json({ error: authRemoved.error.message }, 400);
     return json({ ok: true });
   }
 
