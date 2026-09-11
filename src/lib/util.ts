@@ -19,10 +19,10 @@ export function usernameFromEmail(email: string, taken: Set<string>): string {
   return candidate;
 }
 
+export const DEFAULT_PASSWORD = "123456";
+
 export function randomPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+  return DEFAULT_PASSWORD;
 }
 
 export async function sha256(text: string): Promise<string> {

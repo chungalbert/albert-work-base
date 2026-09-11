@@ -20,9 +20,7 @@ function usernameFromEmail(email: string, taken: Set<string>) {
 }
 
 function randomPassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+  return "123456";
 }
 
 Deno.serve(async (req) => {
@@ -50,6 +48,7 @@ Deno.serve(async (req) => {
     .single();
 
   const body = await req.json();
+  const resetUserId = typeof body.reset_user_id === "string" ? body.reset_user_id : "";
   const rows = (body.rows ?? []) as Array<{
     display_name: string;
     unit: string;
@@ -69,6 +68,31 @@ Deno.serve(async (req) => {
     .eq("role", "leader")
     .limit(1);
   const canCreateAccounts = Boolean(me?.is_admin || (leadRows && leadRows.length > 0));
+
+  if (resetUserId) {
+    if (!canCreateAccounts) return json({ error: "只有專案領導或管理員可以重設密碼" }, 403);
+    const { data: target } = await admin
+      .from("profiles")
+      .select("id,is_admin")
+      .eq("id", resetUserId)
+      .maybeSingle();
+    if (!target) return json({ error: "找不到這位人員" }, 404);
+    if (target.is_admin && !me?.is_admin) return json({ error: "不能重設管理員密碼" }, 403);
+    if (!me?.is_admin) {
+      const { data: shared } = await admin.from("project_members").select("project_id").eq("user_id", resetUserId);
+      const { data: myLead } = await admin
+        .from("project_members")
+        .select("project_id")
+        .eq("user_id", me.id)
+        .eq("role", "leader");
+      const leadSet = new Set((myLead ?? []).map((r: { project_id: string }) => r.project_id));
+      const ok = (shared ?? []).some((r: { project_id: string }) => leadSet.has(r.project_id));
+      if (!ok) return json({ error: "只有專案領導或管理員可以重設密碼" }, 403);
+    }
+    const updated = await admin.auth.admin.updateUserById(resetUserId, { password: "123456" });
+    if (updated.error) return json({ error: updated.error.message }, 400);
+    return json({ ok: true });
+  }
 
   for (const row of rows) {
     const email = row.email.trim().toLowerCase();
