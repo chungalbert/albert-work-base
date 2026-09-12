@@ -1,6 +1,28 @@
 export type Role = "leader" | "member";
-export type TaskStatus = "todo" | "doing" | "done";
+export const TASK_STATUSES = [
+  { id: "opening", label: "Opening" },
+  { id: "working", label: "Working" },
+  { id: "closing", label: "Closing" },
+  { id: "verify", label: "Verify" },
+] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
 export type ViewId = "projects" | "people" | "tasks" | "gantt" | "report";
+
+export function taskStatusLabel(status: string): string {
+  return TASK_STATUSES.find((item) => item.id === status)?.label ?? status;
+}
+
+export function normalizeTaskStatus(status: string): TaskStatus {
+  if (status === "todo" || status === "opening") return "opening";
+  if (status === "doing" || status === "working") return "working";
+  if (status === "closing") return "closing";
+  if (status === "done" || status === "verify") return "verify";
+  return "opening";
+}
+
+export function isTaskOpen(status: string): boolean {
+  return normalizeTaskStatus(status) !== "verify";
+}
 
 export interface Profile {
   id: string;
@@ -34,6 +56,7 @@ export interface Task {
   due_date: string;
   status: TaskStatus;
   note: string;
+  analyzed: string;
 }
 
 export interface AccountInput {

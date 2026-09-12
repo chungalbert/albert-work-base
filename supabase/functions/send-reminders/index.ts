@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   const sent: string[] = [];
 
   for (const task of tasks ?? []) {
-    if (task.status === "done" || !task.assignee_id) continue;
+    if (task.status === "verify" || task.status === "done" || !task.assignee_id) continue;
     const owner = profileById[task.assignee_id];
     if (!owner?.email) continue;
     let kind = "";
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     const leaders = (members ?? []).filter(
       (m) => m.project_id === project.id && m.role === "leader",
     );
-    const projectTasks = (tasks ?? []).filter((t) => t.project_id === project.id && t.status !== "done");
+    const projectTasks = (tasks ?? []).filter((t) => t.project_id === project.id && t.status !== "verify" && t.status !== "done");
     const overdue = projectTasks.filter((t) => t.due_date < today);
     const dueToday = projectTasks.filter((t) => t.due_date === today);
     const week = projectTasks.filter((t) => t.due_date >= today && t.due_date <= weekEnd);

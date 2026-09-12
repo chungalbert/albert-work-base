@@ -9,6 +9,16 @@ import type {
   Role,
   Task,
 } from "./types";
+import { normalizeTaskStatus } from "./types";
+
+function normalizeTask(task: Task): Task {
+  return {
+    ...task,
+    status: normalizeTaskStatus(task.status),
+    note: task.note ?? "",
+    analyzed: task.analyzed ?? "",
+  };
+}
 
 function sb() {
   const client = getSupabase();
@@ -197,19 +207,19 @@ export const cloudApi = {
       .eq("project_id", projectId)
       .order("due_date");
     if (error) throw error;
-    return data as Task[];
+    return (data as Task[]).map(normalizeTask);
   },
 
   async createTask(input: Omit<Task, "id">): Promise<Task> {
     const { data, error } = await sb().from("tasks").insert(input).select().single();
     if (error) throw error;
-    return data as Task;
+    return normalizeTask(data as Task);
   },
 
   async updateTask(id: string, patch: Partial<Task>): Promise<Task> {
     const { data, error } = await sb().from("tasks").update(patch).eq("id", id).select().single();
     if (error) throw error;
-    return data as Task;
+    return normalizeTask(data as Task);
   },
 
   async deleteTask(id: string) {
@@ -220,6 +230,6 @@ export const cloudApi = {
   async allTasksForUser(): Promise<Task[]> {
     const { data, error } = await sb().from("tasks").select("*");
     if (error) throw error;
-    return data as Task[];
+    return (data as Task[]).map(normalizeTask);
   },
 };

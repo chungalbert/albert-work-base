@@ -9,6 +9,7 @@ import type {
   Role,
   Task,
 } from "./types";
+import { normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
@@ -59,6 +60,15 @@ function load(): Store {
 
 function save(store: Store) {
   localStorage.setItem(KEY, JSON.stringify(store));
+}
+
+function normalizeTask(task: Task): Task {
+  return {
+    ...task,
+    status: normalizeTaskStatus(task.status),
+    note: task.note ?? "",
+    analyzed: task.analyzed ?? "",
+  };
 }
 
 const PASSWORD_SCHEME = 2;
@@ -369,7 +379,7 @@ export const localApi = {
   listTasks(projectId: string): Task[] {
     return load()
       .tasks.filter((t) => t.project_id === projectId)
-      .map((t) => ({ ...t, note: t.note ?? "" }));
+      .map(normalizeTask);
   },
 
   createTask(input: Omit<Task, "id">): Task {
@@ -400,7 +410,7 @@ export const localApi = {
     const visible = new Set(localApi.listProjects().map((project) => project.id));
     return store.tasks
       .filter((task) => visible.has(task.project_id))
-      .map((task) => ({ ...task, note: task.note ?? "" }));
+      .map(normalizeTask);
   },
 };
 
@@ -424,8 +434,9 @@ export function ensureSampleIfEmpty() {
     assignee_id: ADMIN_ID,
     start_date: start,
     due_date: start,
-    status: "doing",
+    status: "working",
     note: "",
+    analyzed: "",
   });
   save(store);
 }

@@ -2,13 +2,7 @@ import { addDaysISO, endOfWeekSunday, inRange, startOfWeekMonday, todayISO } fro
 import { downloadText } from "../lib/util";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
-import type { Task } from "../lib/types";
-
-function labelStatus(status: Task["status"]) {
-  if (status === "done") return "完成";
-  if (status === "doing") return "進行中";
-  return "未開始";
-}
+import { isTaskOpen, taskStatusLabel, type Task } from "../lib/types";
 
 export function ReportPage() {
   const { user } = useAuth();
@@ -22,10 +16,10 @@ export function ReportPage() {
   const scoped = role === "leader" ? tasks : tasks.filter((t) => t.assignee_id === user?.id);
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "未指派";
 
-  const done = scoped.filter((t) => t.status === "done" && inRange(t.due_date, weekStart, weekEnd));
-  const doing = scoped.filter((t) => t.status !== "done" && t.due_date >= today);
-  const overdue = scoped.filter((t) => t.status !== "done" && t.due_date < today);
-  const next = scoped.filter((t) => t.status !== "done" && inRange(t.due_date, nextStart, nextEnd));
+  const done = scoped.filter((t) => !isTaskOpen(t.status) && inRange(t.due_date, weekStart, weekEnd));
+  const doing = scoped.filter((t) => isTaskOpen(t.status) && t.due_date >= today);
+  const overdue = scoped.filter((t) => isTaskOpen(t.status) && t.due_date < today);
+  const next = scoped.filter((t) => isTaskOpen(t.status) && inRange(t.due_date, nextStart, nextEnd));
 
   const download = () => {
     const html = document.getElementById("weekly-report")?.outerHTML ?? "";
@@ -45,8 +39,8 @@ export function ReportPage() {
         <ul>
           {items.map((t) => (
             <li key={t.id}>
-              {t.title} · {nameOf(t.assignee_id)} · Deadline {t.due_date} · {labelStatus(t.status)}
-              {t.note ? ` · ${t.note}` : ""}
+              {t.title} · {nameOf(t.assignee_id)} · Deadline {t.due_date} · {taskStatusLabel(t.status)}
+              {t.analyzed ? ` · ${t.analyzed}` : t.note ? ` · ${t.note}` : ""}
             </li>
           ))}
         </ul>
