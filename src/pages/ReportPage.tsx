@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import { isTaskOpen, taskStatusLabel, type Task } from "../lib/types";
 
+type Tone = "done" | "doing" | "overdue" | "next";
+
 export function ReportPage() {
   const { user } = useAuth();
   const { project, tasks, profiles, role } = useStore();
@@ -21,31 +23,65 @@ export function ReportPage() {
   const overdue = scoped.filter((t) => isTaskOpen(t.status) && t.due_date < today);
   const next = scoped.filter((t) => isTaskOpen(t.status) && inRange(t.due_date, nextStart, nextEnd));
 
-  const download = () => {
+  const download = async () => {
     const html = document.getElementById("weekly-report")?.outerHTML ?? "";
+    const css: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        css.push([...sheet.cssRules].map((rule) => rule.cssText).join("\n"));
+      } catch {
+        if (!sheet.href) continue;
+        try {
+          css.push(await (await fetch(sheet.href)).text());
+        } catch {
+          /* downloaded file can still show the report structure */
+        }
+      }
+    }
     downloadText(
       `weekly-report-${weekStart}.html`,
-      `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>週報</title></head><body>${html}</body></html>`,
+      `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>週報</title><style>${css.join("\n")}</style></head><body style="background:#0b1220;color:#f4f7fb;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;padding:24px">${html}</body></html>`,
       "text/html;charset=utf-8",
     );
   };
 
-  const Section = ({ title, items }: { title: string; items: Task[] }) => (
-    <>
-      <h2>{title}</h2>
+  const Section = ({ title, items, tone }: { title: string; items: Task[]; tone: Tone }) => (
+    <section className={`report-block report-${tone}`}>
+      <h2>
+        {title}
+        <span className="report-count">{items.length}</span>
+      </h2>
       {items.length === 0 ? (
-        <p>無</p>
+        <p className="report-empty">沒有這類任務</p>
       ) : (
-        <ul>
-          {items.map((t) => (
-            <li key={t.id}>
-              {t.title} · {nameOf(t.assignee_id)} · Deadline {t.due_date} · {taskStatusLabel(t.status)}
-              {t.analyzed ? ` · ${t.analyzed}` : t.note ? ` · ${t.note}` : ""}
-            </li>
-          ))}
-        </ul>
+        <div className="report-table-wrap">
+          <table className="report-table">
+            <thead>
+              <tr>
+                <th>任務</th>
+                <th>負責人</th>
+                <th>Deadline</th>
+                <th>狀態</th>
+                <th>已分析內容</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((task) => (
+                <tr key={task.id}>
+                  <td className="report-task">{task.title}</td>
+                  <td>{nameOf(task.assignee_id)}</td>
+                  <td className="report-date">{task.due_date}</td>
+                  <td>
+                    <span className={`status-pill status-${task.status}`}>{taskStatusLabel(task.status)}</span>
+                  </td>
+                  <td className="report-analysis">{task.analyzed || task.note || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </>
+    </section>
   );
 
   return (
@@ -59,18 +95,36 @@ export function ReportPage() {
         </div>
         <div className="row">
           <button className="btn" type="button" onClick={() => window.print()}>列印 / 存 PDF</button>
-          <button className="btn btn-gold" type="button" onClick={download}>下載 HTML</button>
+          <button className="btn btn-gold" type="button" onClick={() => void download()}>下載 HTML</button>
         </div>
       </div>
       <article className="report" id="weekly-report">
-        <h1>{project?.name ?? "專案"} Weekly Report</h1>
-        <p className="meta">
-          {weekStart} — {weekEnd} · 產出時間 {today} · {user?.display_name}
-        </p>
-        <Section title="本週完成" items={done} />
-        <Section title="進行中" items={doing} />
-        <Section title="逾期" items={overdue} />
-        <Section title="下週到期" items={next} />
+        <header className="report-head">
+          <p className="report-kicker">Weekly Report</p>
+          <h1>{project?.name ?? "專案"}</h1>
+          <dl className="report-meta">
+            <div>
+              <dt>期間</dt>
+              <dd>{weekStart} — {weekEnd}</dd>
+            </div>
+            <div>
+              <dt>產出</dt>
+              <dd>{today}</dd>
+            </div>
+            <div>
+              <dt>範圍</dt>
+              <dd>{role === "leader" ? "專案全員" : "我的任務"}</dd>
+            </div>
+            <div>
+              <dt>撰寫</dt>
+              <dd>{user?.display_name ?? "—"}</dd>
+            </div>
+          </dl>
+        </header>
+        <Section title="本週完成" items={done} tone="done" />
+        <Section title="進行中" items={doing} tone="doing" />
+        <Section title="逾期" items={overdue} tone="overdue" />
+        <Section title="下週到期" items={next} tone="next" />
       </article>
     </section>
   );
