@@ -1,15 +1,9 @@
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { todayISO, addDaysISO } from "../lib/dates";
-import type { TaskStatus } from "../lib/types";
+import { TASK_STATUSES, type TaskStatus } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
-
-const STATUS: { id: TaskStatus; label: string }[] = [
-  { id: "todo", label: "未開始" },
-  { id: "doing", label: "進行中" },
-  { id: "done", label: "完成" },
-];
 
 export function TasksPage() {
   const { user } = useAuth();
@@ -18,7 +12,8 @@ export function TasksPage() {
   const [assignee, setAssignee] = useState(user?.id ?? "");
   const [start, setStart] = useState(todayISO());
   const [due, setDue] = useState(addDaysISO(todayISO(), 3));
-  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<TaskStatus>("opening");
+  const [analyzed, setAnalyzed] = useState("");
   const [error, setError] = useState("");
 
   const people = members
@@ -38,11 +33,13 @@ export function TasksPage() {
         assignee_id: assignee || null,
         start_date: start,
         due_date: due < start ? start : due,
-        status: "todo",
-        note: note.trim(),
+        status,
+        note: "",
+        analyzed: analyzed.trim(),
       });
       setTitle("");
-      setNote("");
+      setAnalyzed("");
+      setStatus("opening");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "新增失敗");
@@ -93,12 +90,23 @@ export function TasksPage() {
               <label>Deadline</label>
               <input type="date" value={due} onChange={(e) => setDue(e.target.value)} required />
             </div>
-            <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <div className="field">
               <label>當前狀態</label>
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="例如：等零件、已送審、測試中"
+              <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+                {TASK_STATUSES.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="task-analyzed">已分析內容</label>
+              <textarea
+                id="task-analyzed"
+                className="analysis-input"
+                rows={4}
+                value={analyzed}
+                onChange={(e) => setAnalyzed(e.target.value)}
+                placeholder="紀錄已分析的內容"
               />
             </div>
           </div>
@@ -118,8 +126,8 @@ export function TasksPage() {
                 <th>負責人</th>
                 <th>開始</th>
                 <th>Deadline</th>
-                <th>進度</th>
                 <th>當前狀態</th>
+                <th>已分析內容</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
@@ -153,21 +161,22 @@ export function TasksPage() {
                         disabled={!canEdit}
                         onChange={(e) => void patch(task.id, { status: e.target.value as TaskStatus })}
                       >
-                        {STATUS.map((s) => (
-                          <option key={s.id} value={s.id}>{s.label}</option>
+                        {TASK_STATUSES.map((item) => (
+                          <option key={item.id} value={item.id}>{item.label}</option>
                         ))}
                       </select>
                     </td>
                     <td>
-                      <input
-                        className="note-input"
-                        defaultValue={task.note ?? ""}
-                        key={`${task.id}-note-${task.note ?? ""}`}
+                      <textarea
+                        className="analysis-input"
+                        rows={3}
+                        defaultValue={task.analyzed ?? ""}
+                        key={`${task.id}-analyzed-${task.analyzed ?? ""}`}
                         disabled={!canEdit}
-                        placeholder="輸入當前狀態"
+                        placeholder="紀錄已分析的內容"
                         onBlur={(e) => {
                           const value = e.target.value.trim();
-                          if (value !== (task.note ?? "")) void patch(task.id, { note: value });
+                          if (value !== (task.analyzed ?? "")) void patch(task.id, { analyzed: value });
                         }}
                       />
                     </td>

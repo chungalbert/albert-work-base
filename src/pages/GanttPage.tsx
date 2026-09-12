@@ -36,7 +36,8 @@ export function GanttPage() {
       name: task.title,
       start: task.start_date,
       end: task.due_date,
-      progress: task.status === "done" ? 100 : task.status === "doing" ? 50 : 0,
+      progress:
+        task.status === "verify" ? 100 : task.status === "closing" ? 75 : task.status === "working" ? 45 : 15,
       custom_class: task.status,
     }));
     if (rows.length === 0) return;

@@ -3,13 +3,7 @@ import { api } from "../lib/api";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
 import { roleLabel } from "../lib/roles";
-import type { Task } from "../lib/types";
-
-function statusLabel(status: Task["status"]) {
-  if (status === "done") return "完成";
-  if (status === "doing") return "進行中";
-  return "未開始";
-}
+import { taskStatusLabel } from "../lib/types";
 
 export function ProjectsPage() {
   const { user } = useAuth();
@@ -101,7 +95,7 @@ export function ProjectsPage() {
                   {nested.map((task) => (
                     <li key={task.id}>
                       {task.title}
-                      <span className="hint"> · {nameOf(task.assignee_id)} · {task.start_date} → {task.due_date} · {statusLabel(task.status)}</span>
+                      <span className="hint"> · {nameOf(task.assignee_id)} · {task.start_date} → {task.due_date} · {taskStatusLabel(task.status)}</span>
                     </li>
                   ))}
                 </ul>

@@ -34,8 +34,9 @@ create table if not exists public.tasks (
   assignee_id uuid references public.profiles(id) on delete set null,
   start_date date not null,
   due_date date not null,
-  status text not null default 'todo' check (status in ('todo', 'doing', 'done')),
+  status text not null default 'opening' check (status in ('opening', 'working', 'closing', 'verify')),
   note text not null default '',
+  analyzed text not null default '',
   created_at timestamptz not null default now()
 );
 
