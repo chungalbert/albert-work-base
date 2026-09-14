@@ -13,7 +13,7 @@ interface Row {
 const emptyRow = (): Row => ({ display_name: "", unit: "", email: "" });
 
 export function PeoplePage() {
-  const { project, profiles, members, role, reload } = useStore();
+  const { project, profiles, members, role, reload, isAll } = useStore();
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [paste, setPaste] = useState("");
   const [creds, setCreds] = useState<CredentialRow[]>([]);
@@ -148,7 +148,10 @@ export function PeoplePage() {
       <div className="page-head">
         <div>
           <h1>人員</h1>
-          <p>開通帳密與加入專案是分開的。可在「所有帳號」重設密碼或刪除人員。</p>
+          <p>
+            開通帳密與加入專案是分開的。可在「所有帳號」重設密碼或刪除人員。
+            {isAll ? " 要看成員或把人加進專案，請先在右上角選單一專案。" : ""}
+          </p>
         </div>
       </div>
 
@@ -190,7 +193,7 @@ export function PeoplePage() {
       )}
 
       <div className="panel" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>{project?.name ?? "尚未選擇專案"} 成員</h2>
+        <h2 style={{ marginTop: 0 }}>{isAll ? "全部專案" : project?.name ?? "尚未選擇專案"} 成員</h2>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -206,7 +209,9 @@ export function PeoplePage() {
             <tbody>
               {people.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 6 : 5} className="hint">這個專案還沒有成員。</td>
+                  <td colSpan={canManage ? 6 : 5} className="hint">
+                    {isAll ? "請先在右上角選一個專案，才能看成員。" : "這個專案還沒有成員。"}
+                  </td>
                 </tr>
               )}
               {people.map((row) => (

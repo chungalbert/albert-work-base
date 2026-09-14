@@ -7,7 +7,7 @@ import { useStore } from "../context/StoreContext";
 
 export function TasksPage() {
   const { user } = useAuth();
-  const { project, tasks, profiles, members, role, reload } = useStore();
+  const { project, tasks, profiles, members, role, reload, isAll, projectName, canLeadProject } = useStore();
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState(user?.id ?? "");
   const [start, setStart] = useState(todayISO());
@@ -20,7 +20,8 @@ export function TasksPage() {
     .map((m) => profiles.find((p) => p.id === m.user_id))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
-  const canManage = role === "leader";
+  const canManage = Boolean(project && role === "leader");
+  const canDeleteAny = tasks.some((task) => canLeadProject(task.project_id));
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
@@ -55,13 +56,15 @@ export function TasksPage() {
     <section>
       <div className="page-head">
         <div>
-          <h1>{project ? `${project.name} 的任務` : "任務"}</h1>
+          <h1>{isAll ? "全部專案的任務" : project ? `${project.name} 的任務` : "任務"}</h1>
           <p>
-            {!project
+            {!project && !isAll
               ? "請先在右上角或專案頁選一個專案。新增的任務只會進目前專案。"
+              : isAll
+              ? "一次顯示所有專案的任務。要新增任務請先在右上角選單一專案。"
               : canManage
-              ? `只顯示「${project.name}」的任務。切換右上角專案可看其他專案。`
-              : `這是「${project.name}」裡指派給你的任務。`}
+              ? `只顯示「${project?.name}」的任務。切換右上角專案可看其他專案，或選 All 專案看全部。`
+              : `這是「${project?.name}」裡指派給你的任務。`}
           </p>
         </div>
       </div>
@@ -122,21 +125,24 @@ export function TasksPage() {
           <table className="table">
             <thead>
               <tr>
+                {isAll && <th>專案</th>}
                 <th>任務</th>
                 <th>負責人</th>
                 <th>開始</th>
                 <th>Deadline</th>
                 <th>當前狀態</th>
                 <th>已分析內容</th>
-                {canManage && <th></th>}
+                {canDeleteAny && <th></th>}
               </tr>
             </thead>
             <tbody>
-              {(canManage ? tasks : tasks.filter((t) => t.assignee_id === user?.id)).map((task) => {
+              {tasks.map((task) => {
                 const owner = profiles.find((p) => p.id === task.assignee_id);
-                const canEdit = canManage || task.assignee_id === user?.id;
+                const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
+                const canDelete = canLeadProject(task.project_id);
                 return (
                   <tr key={task.id}>
+                    {isAll && <td>{projectName(task.project_id)}</td>}
                     <td>{task.title}</td>
                     <td>{owner?.display_name ?? "—"}</td>
                     <td>
@@ -180,11 +186,13 @@ export function TasksPage() {
                         }}
                       />
                     </td>
-                    {canManage && (
+                    {canDeleteAny && (
                       <td>
-                        <button className="btn" type="button" onClick={() => void api.deleteTask(task.id).then(reload)}>
-                          刪除
-                        </button>
+                        {canDelete && (
+                          <button className="btn" type="button" onClick={() => void api.deleteTask(task.id).then(reload)}>
+                            刪除
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>

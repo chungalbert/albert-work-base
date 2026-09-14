@@ -9,6 +9,7 @@ import { ReportPage } from "./pages/ReportPage";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
+import { ALL_PROJECTS_ID } from "./lib/projects";
 import { roleLabel } from "./lib/roles";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
@@ -58,6 +59,7 @@ function Shell() {
               aria-label="專案"
             >
               {projects.length === 0 && <option value="">尚未有專案</option>}
+              {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All 專案</option>}
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
