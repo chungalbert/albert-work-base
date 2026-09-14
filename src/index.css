@@ -428,13 +428,71 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 }
 
 .gantt-box { overflow-x: auto; }
-.gantt-box .gantt .bar-wrapper .bar { fill: #2563eb; }
-.gantt-box .gantt .bar-progress { fill: #60a5fa; }
-.gantt-box .gantt .grid-header, .gantt-box .gantt .grid-row { fill: #151d2e; }
+.gantt-box .gantt .grid-header,
+.gantt-box .gantt .grid-row,
+.gantt-box .gantt .grid-row:nth-child(even) { fill: #151d2e; }
+.gantt-box .gantt .row-line { stroke: #243044; }
 .gantt-box .gantt .tick { stroke: #243044; }
 .gantt-box .gantt .today-highlight { fill: rgba(59, 130, 246, 0.16); }
 .gantt-box .gantt text { fill: #f4f7fb; }
 .gantt-box .gantt .lower-text.current-ww { fill: #93c5fd; font-weight: 700; }
+.gantt-box .gantt .bar-label { fill: #fff; font-weight: 600; }
+
+.gantt-box .gantt .bar-wrapper .bar,
+.gantt-box .gantt .bar-wrapper .bar-progress { fill: #475569; }
+.gantt-box .gantt .bar-wrapper.opening .bar,
+.gantt-box .gantt .bar-wrapper.opening .bar-progress { fill: #64748b; }
+.gantt-box .gantt .bar-wrapper.working .bar,
+.gantt-box .gantt .bar-wrapper.working .bar-progress { fill: #2563eb; }
+.gantt-box .gantt .bar-wrapper.closing .bar,
+.gantt-box .gantt .bar-wrapper.closing .bar-progress { fill: #d97706; }
+.gantt-box .gantt .bar-wrapper.verify .bar,
+.gantt-box .gantt .bar-wrapper.verify .bar-progress { fill: #16a34a; }
+
+.gantt-box .gantt .bar-wrapper.opening:hover .bar,
+.gantt-box .gantt .bar-wrapper.opening:hover .bar-progress,
+.gantt-box .gantt .bar-wrapper.opening.active .bar,
+.gantt-box .gantt .bar-wrapper.opening.active .bar-progress { fill: #475569; }
+.gantt-box .gantt .bar-wrapper.working:hover .bar,
+.gantt-box .gantt .bar-wrapper.working:hover .bar-progress,
+.gantt-box .gantt .bar-wrapper.working.active .bar,
+.gantt-box .gantt .bar-wrapper.working.active .bar-progress { fill: #1d4ed8; }
+.gantt-box .gantt .bar-wrapper.closing:hover .bar,
+.gantt-box .gantt .bar-wrapper.closing:hover .bar-progress,
+.gantt-box .gantt .bar-wrapper.closing.active .bar,
+.gantt-box .gantt .bar-wrapper.closing.active .bar-progress { fill: #b45309; }
+.gantt-box .gantt .bar-wrapper.verify:hover .bar,
+.gantt-box .gantt .bar-wrapper.verify:hover .bar-progress,
+.gantt-box .gantt .bar-wrapper.verify.active .bar,
+.gantt-box .gantt .bar-wrapper.verify.active .bar-progress { fill: #15803d; }
+
+.gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gantt-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gantt-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.gantt-swatch.opening { background: #64748b; }
+.gantt-swatch.working { background: #2563eb; }
+.gantt-swatch.closing { background: #d97706; }
+.gantt-swatch.verify { background: #16a34a; }
 
 .report {
   padding: 28px 28px 32px;

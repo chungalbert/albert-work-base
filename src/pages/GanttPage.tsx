@@ -36,8 +36,7 @@ export function GanttPage() {
       name: task.title,
       start: task.start_date,
       end: task.due_date,
-      progress:
-        task.status === "verify" ? 100 : task.status === "closing" ? 75 : task.status === "working" ? 45 : 15,
+      progress: 100,
       custom_class: task.status,
     }));
     if (rows.length === 0) return;
@@ -79,6 +78,12 @@ export function GanttPage() {
       ) : (
         <div className="gantt-box">
           <div ref={host} />
+          <ul className="gantt-legend" aria-label="狀態顏色">
+            <li><span className="gantt-swatch opening" /> Opening</li>
+            <li><span className="gantt-swatch working" /> Working</li>
+            <li><span className="gantt-swatch closing" /> Closing</li>
+            <li><span className="gantt-swatch verify" /> Verify</li>
+          </ul>
         </div>
       )}
     </section>
