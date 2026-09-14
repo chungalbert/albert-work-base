@@ -12,6 +12,87 @@ import { TASK_STATUSES, type AnalyzedNote, type Profile, type TaskStatus } from 
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 
+function AnalysisNoteItem({
+  note,
+  notes,
+  profiles,
+  canEdit,
+  userId,
+  onSave,
+}: {
+  note: AnalyzedNote;
+  notes: AnalyzedNote[];
+  profiles: Profile[];
+  canEdit: boolean;
+  userId: string | undefined;
+  onSave: (next: AnalyzedNote[]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.text);
+  const credit = analyzedNoteCredit(note, profiles);
+
+  const save = () => {
+    const value = draft.trim();
+    setEditing(false);
+    if (!userId || value === note.text) {
+      setDraft(note.text);
+      return;
+    }
+    onSave(updateAnalyzedNote(notes, note.id, value, userId));
+  };
+
+  if (!editing) {
+    return (
+      <div className="analysis-note">
+        <p className="analysis-text">{note.text}</p>
+        <div className="analysis-note-foot">
+          {credit && <p className="analysis-meta">{credit}</p>}
+          {canEdit && (
+            <button
+              type="button"
+              className="btn analysis-edit"
+              onClick={() => {
+                setDraft(note.text);
+                setEditing(true);
+              }}
+            >
+              編輯
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="analysis-note">
+      <textarea
+        className="analysis-input"
+        rows={3}
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      <div className="analysis-note-foot">
+        {credit && <p className="analysis-meta">{credit}</p>}
+        <div className="row">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setDraft(note.text);
+              setEditing(false);
+            }}
+          >
+            取消
+          </button>
+          <button type="button" className="btn btn-gold" onClick={save}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AnalysisCell({
   notes,
   profiles,
@@ -27,42 +108,39 @@ function AnalysisCell({
 }) {
   const [draft, setDraft] = useState("");
 
+  const add = () => {
+    const value = draft.trim();
+    if (!value || !userId) return;
+    setDraft("");
+    onSave(addAnalyzedNote(notes, value, userId));
+  };
+
   return (
     <div className="analysis-cell">
-      {notes.map((note) => {
-        const credit = analyzedNoteCredit(note, profiles);
-        return (
-          <div key={note.id} className="analysis-note">
-            <textarea
-              className="analysis-input"
-              rows={2}
-              defaultValue={note.text}
-              key={`${note.id}-${note.at ?? ""}`}
-              disabled={!canEdit}
-              onBlur={(e) => {
-                const value = e.target.value.trim();
-                if (value === note.text || !userId) return;
-                onSave(updateAnalyzedNote(notes, note.id, value, userId));
-              }}
-            />
-            {credit && <p className="analysis-meta">{credit}</p>}
-          </div>
-        );
-      })}
-      {canEdit && (
-        <textarea
-          className="analysis-input"
-          rows={2}
-          value={draft}
-          placeholder={notes.length ? "新增一筆分析" : "紀錄已分析的內容"}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            const value = draft.trim();
-            if (!value || !userId) return;
-            setDraft("");
-            onSave(addAnalyzedNote(notes, value, userId));
-          }}
+      {notes.map((note) => (
+        <AnalysisNoteItem
+          key={note.id}
+          note={note}
+          notes={notes}
+          profiles={profiles}
+          canEdit={canEdit}
+          userId={userId}
+          onSave={onSave}
         />
+      ))}
+      {canEdit && (
+        <div className="analysis-add">
+          <textarea
+            className="analysis-input"
+            rows={2}
+            value={draft}
+            placeholder={notes.length ? "新增一筆分析" : "紀錄已分析的內容"}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="button" className="btn btn-gold analysis-edit" disabled={!draft.trim()} onClick={add}>
+            新增
+          </button>
+        </div>
       )}
       {!canEdit && notes.length === 0 && <span className="analysis-empty">—</span>}
     </div>
