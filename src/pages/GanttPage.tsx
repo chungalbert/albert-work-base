@@ -21,7 +21,7 @@ function labelWeeks(root: HTMLElement, gantt: GanttChart) {
 }
 
 export function GanttPage() {
-  const { tasks, reload, role, project } = useStore();
+  const { tasks, reload, project, isAll, projectName, canLeadProject } = useStore();
   const { user } = useAuth();
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<GanttChart | null>(null);
@@ -33,7 +33,7 @@ export function GanttPage() {
     host.current.innerHTML = "";
     const rows = tasks.map((task) => ({
       id: task.id,
-      name: task.title,
+      name: isAll ? `${projectName(task.project_id)} · ${task.title}` : task.title,
       start: task.start_date,
       end: task.due_date,
       progress: 100,
@@ -44,7 +44,7 @@ export function GanttPage() {
       view_mode: "Week",
       on_date_change: (task: { id: string }, start: Date, end: Date) => {
         const current = tasks.find((t) => t.id === task.id);
-        const canEdit = role === "leader" || current?.assignee_id === user?.id;
+        const canEdit = Boolean(current && (canLeadProject(current.project_id) || current.assignee_id === user?.id));
         if (!canEdit) {
           void reload();
           return;
@@ -58,14 +58,18 @@ export function GanttPage() {
       },
     });
     labelWeeks(host.current, chart.current);
-  }, [tasks, role, user, reload]);
+  }, [tasks, user, reload, isAll, projectName, canLeadProject]);
 
   return (
     <section>
       <div className="page-head">
         <div>
-          <h1>{project ? `${project.name} 甘特圖` : "甘特圖"}</h1>
-          <p>以週為單位顯示目前專案的任務。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。</p>
+          <h1>{isAll ? "全部專案甘特圖" : project ? `${project.name} 甘特圖` : "甘特圖"}</h1>
+          <p>
+            {isAll
+              ? "一次顯示所有專案的任務。橫條名稱前面是專案。拖曳可改日期。"
+              : "以週為單位顯示目前專案的任務。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。"}
+          </p>
         </div>
         <div className="ww-badge" aria-label={`現在是 ${nowWW}`}>
           <span className="ww-kicker">現在是</span>
@@ -74,7 +78,7 @@ export function GanttPage() {
         </div>
       </div>
       {tasks.length === 0 ? (
-        <p className="hint">這個專案還沒有任務。</p>
+        <p className="hint">{isAll ? "還沒有任務。" : "這個專案還沒有任務。"}</p>
       ) : (
         <div className="gantt-box">
           <div ref={host} />

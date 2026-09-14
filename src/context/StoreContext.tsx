@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { ALL_PROJECTS_ID, isAllProjects } from "../lib/projects";
 import type { Profile, Project, ProjectMember, Role, Task } from "../lib/types";
 import { useAuth } from "./AuthContext";
 
@@ -11,9 +12,12 @@ interface StoreValue {
   tasks: Task[];
   projectId: string | null;
   project: Project | null;
+  isAll: boolean;
   role: Role | null;
   leaderProjectIds: string[];
   setProjectId: (id: string) => void;
+  projectName: (id: string) => string;
+  canLeadProject: (id: string) => boolean;
   reload: () => Promise<void>;
 }
 
@@ -43,12 +47,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setProfiles(nextProfiles);
     setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
     setLeaderProjectIds(nextLeaderIds);
+    const current = projectIdRef.current;
     const selected =
-      projectIdRef.current && visible.has(projectIdRef.current)
-        ? projectIdRef.current
-        : nextProjects[0]?.id ?? null;
-    if (selected !== projectIdRef.current) setProjectId(selected);
-    if (selected) setMembers(await api.listMembers(selected));
+      current === ALL_PROJECTS_ID
+        ? ALL_PROJECTS_ID
+        : current && visible.has(current)
+          ? current
+          : nextProjects[0]?.id ?? null;
+    if (selected !== current) setProjectId(selected);
+    if (selected && !isAllProjects(selected)) setMembers(await api.listMembers(selected));
     else setMembers([]);
   }, [user]);
 
@@ -57,21 +64,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [reload]);
 
   useEffect(() => {
-    if (!user || !projectId) {
+    if (!user || !projectId || isAllProjects(projectId)) {
       setMembers([]);
       return;
     }
     void api.listMembers(projectId).then(setMembers);
   }, [user, projectId]);
 
-  const project = projects.find((item) => item.id === projectId) ?? null;
-  const tasks = useMemo(
-    () => allTasks.filter((task) => task.project_id === projectId),
-    [allTasks, projectId],
+  const isAll = isAllProjects(projectId);
+  const project = isAll ? null : projects.find((item) => item.id === projectId) ?? null;
+  const canLeadProject = useCallback(
+    (id: string) => Boolean(user?.is_admin || leaderProjectIds.includes(id)),
+    [user, leaderProjectIds],
   );
-  const role = user?.is_admin
+  const projectName = useCallback(
+    (id: string) => projects.find((item) => item.id === id)?.name ?? "專案",
+    [projects],
+  );
+
+  const tasks = useMemo(() => {
+    if (!user) return [];
+    const visible = allTasks.filter((task) => {
+      if (user.is_admin) return true;
+      if (leaderProjectIds.includes(task.project_id)) return true;
+      return task.assignee_id === user.id;
+    });
+    const scoped = isAll ? visible : visible.filter((task) => task.project_id === projectId);
+    return [...scoped].sort((a, b) => {
+      const byProject = projectName(a.project_id).localeCompare(projectName(b.project_id), "zh-Hant");
+      if (byProject !== 0) return byProject;
+      return a.due_date.localeCompare(b.due_date) || a.title.localeCompare(b.title, "zh-Hant");
+    });
+  }, [allTasks, user, leaderProjectIds, isAll, projectId, projectName]);
+
+  const role: Role | null = user?.is_admin
     ? "leader"
-    : members.find((member) => member.user_id === user?.id)?.role ?? null;
+    : isAll
+      ? (leaderProjectIds.length > 0 ? "leader" : "member")
+      : members.find((member) => member.user_id === user?.id)?.role ?? null;
 
   const value = useMemo<StoreValue>(
     () => ({
@@ -82,12 +112,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tasks,
       projectId,
       project,
+      isAll,
       role,
       leaderProjectIds,
       setProjectId,
+      projectName,
+      canLeadProject,
       reload,
     }),
-    [projects, profiles, members, allTasks, tasks, projectId, project, role, leaderProjectIds, reload],
+    [projects, profiles, members, allTasks, tasks, projectId, project, isAll, role, leaderProjectIds, projectName, canLeadProject, reload],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

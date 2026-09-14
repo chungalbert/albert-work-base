@@ -8,15 +8,16 @@ type Tone = "done" | "doing" | "overdue" | "next";
 
 export function ReportPage() {
   const { user } = useAuth();
-  const { project, tasks, profiles, role } = useStore();
+  const { project, tasks, profiles, isAll, projectName, role } = useStore();
   const weekStart = startOfWeekMonday();
   const weekEnd = endOfWeekSunday();
   const nextStart = addDaysISO(weekEnd, 1);
   const nextEnd = addDaysISO(nextStart, 6);
   const today = todayISO();
 
-  const scoped = role === "leader" ? tasks : tasks.filter((t) => t.assignee_id === user?.id);
+  const scoped = tasks;
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "未指派";
+  const scopeLabel = isAll ? "全部專案" : role === "leader" ? "專案全員" : "我的任務";
 
   const done = scoped.filter((t) => !isTaskOpen(t.status) && inRange(t.due_date, weekStart, weekEnd));
   const doing = scoped.filter((t) => isTaskOpen(t.status) && t.due_date >= today);
@@ -58,6 +59,7 @@ export function ReportPage() {
           <table className="report-table">
             <thead>
               <tr>
+                {isAll && <th>專案</th>}
                 <th>任務</th>
                 <th>負責人</th>
                 <th>Deadline</th>
@@ -68,6 +70,7 @@ export function ReportPage() {
             <tbody>
               {items.map((task) => (
                 <tr key={task.id}>
+                  {isAll && <td>{projectName(task.project_id)}</td>}
                   <td className="report-task">{task.title}</td>
                   <td>{nameOf(task.assignee_id)}</td>
                   <td className="report-date">{task.due_date}</td>
@@ -90,7 +93,7 @@ export function ReportPage() {
         <div>
           <h1>週報</h1>
           <p>
-            {project ? `「${project.name}」` : "專案"} · 本週一到日（台北）· {role === "leader" ? "專案全員" : "我的任務"}
+            {project ? `「${project.name}」` : isAll ? "全部專案" : "專案"} · 本週一到日（台北）· {scopeLabel}
           </p>
         </div>
         <div className="row">
@@ -101,7 +104,7 @@ export function ReportPage() {
       <article className="report" id="weekly-report">
         <header className="report-head">
           <p className="report-kicker">Weekly Report</p>
-          <h1>{project?.name ?? "專案"}</h1>
+          <h1>{isAll ? "全部專案" : project?.name ?? "專案"}</h1>
           <dl className="report-meta">
             <div>
               <dt>期間</dt>
@@ -113,7 +116,7 @@ export function ReportPage() {
             </div>
             <div>
               <dt>範圍</dt>
-              <dd>{role === "leader" ? "專案全員" : "我的任務"}</dd>
+              <dd>{scopeLabel}</dd>
             </div>
             <div>
               <dt>撰寫</dt>
