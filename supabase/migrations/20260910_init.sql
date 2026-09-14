@@ -39,6 +39,7 @@ create table if not exists public.tasks (
   analyzed text not null default '',
   analyzed_by uuid references public.profiles(id) on delete set null,
   analyzed_at timestamptz,
+  analyzed_notes jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 

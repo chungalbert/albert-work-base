@@ -1,4 +1,4 @@
-import { analyzedCreditLabel } from "../lib/analyzed";
+import { analyzedNoteCredit } from "../lib/analyzed";
 import { addDaysISO, endOfWeekSunday, inRange, startOfWeekMonday, todayISO } from "../lib/dates";
 import { downloadText } from "../lib/util";
 import { useAuth } from "../context/AuthContext";
@@ -69,24 +69,32 @@ export function ReportPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((task) => {
-                const credit = analyzedCreditLabel(task, profiles);
-                return (
-                  <tr key={task.id}>
-                    {isAll && <td>{projectName(task.project_id)}</td>}
-                    <td className="report-task">{task.title}</td>
-                    <td>{nameOf(task.assignee_id)}</td>
-                    <td className="report-date">{task.due_date}</td>
-                    <td>
-                      <span className={`status-pill status-${task.status}`}>{taskStatusLabel(task.status)}</span>
-                    </td>
-                    <td className="report-analysis">
-                      {task.analyzed || task.note || "—"}
-                      {credit && <div className="report-analysis-meta">{credit}</div>}
-                    </td>
-                  </tr>
-                );
-              })}
+              {items.map((task) => (
+                <tr key={task.id}>
+                  {isAll && <td>{projectName(task.project_id)}</td>}
+                  <td className="report-task">{task.title}</td>
+                  <td>{nameOf(task.assignee_id)}</td>
+                  <td className="report-date">{task.due_date}</td>
+                  <td>
+                    <span className={`status-pill status-${task.status}`}>{taskStatusLabel(task.status)}</span>
+                  </td>
+                  <td className="report-analysis">
+                    {task.analyzed_notes.length === 0 ? (
+                      task.note || "—"
+                    ) : (
+                      task.analyzed_notes.map((note) => {
+                        const credit = analyzedNoteCredit(note, profiles);
+                        return (
+                          <div key={note.id} className="report-analysis-note">
+                            {note.text}
+                            {credit && <div className="report-analysis-meta">{credit}</div>}
+                          </div>
+                        );
+                      })
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

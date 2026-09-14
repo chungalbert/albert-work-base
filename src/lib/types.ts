@@ -47,6 +47,13 @@ export interface ProjectMember {
   role: Role;
 }
 
+export interface AnalyzedNote {
+  id: string;
+  text: string;
+  by: string | null;
+  at: string | null;
+}
+
 export interface Task {
   id: string;
   project_id: string;
@@ -59,6 +66,7 @@ export interface Task {
   analyzed: string;
   analyzed_by: string | null;
   analyzed_at: string | null;
+  analyzed_notes: AnalyzedNote[];
 }
 
 export interface AccountInput {
