@@ -53,3 +53,10 @@ export function isoWeekParts(iso = todayISO()): { year: number; week: number } {
 export function formatWW(iso = todayISO()): string {
   return `WW${String(isoWeekParts(iso).week).padStart(2, "0")}`;
 }
+
+/** Display timestamp in Asia/Taipei as YYYY-MM-DD HH:mm. */
+export function formatTaipeiDateTime(iso: string): string {
+  return new Date(iso)
+    .toLocaleString("sv-SE", { timeZone: TZ, hour12: false })
+    .slice(0, 16);
+}

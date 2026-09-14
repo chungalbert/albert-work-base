@@ -57,6 +57,8 @@ export interface Task {
   status: TaskStatus;
   note: string;
   analyzed: string;
+  analyzed_by: string | null;
+  analyzed_at: string | null;
 }
 
 export interface AccountInput {

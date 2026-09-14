@@ -37,6 +37,8 @@ create table if not exists public.tasks (
   status text not null default 'opening' check (status in ('opening', 'working', 'closing', 'verify')),
   note text not null default '',
   analyzed text not null default '',
+  analyzed_by uuid references public.profiles(id) on delete set null,
+  analyzed_at timestamptz,
   created_at timestamptz not null default now()
 );
 

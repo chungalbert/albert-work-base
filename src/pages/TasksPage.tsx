@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { analyzedCreditLabel, stampAnalyzed } from "../lib/analyzed";
 import { api } from "../lib/api";
 import { todayISO, addDaysISO } from "../lib/dates";
 import { TASK_STATUSES, type TaskStatus } from "../lib/types";
@@ -25,7 +26,7 @@ export function TasksPage() {
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
-    if (!project) return;
+    if (!project || !user) return;
     setError("");
     try {
       await api.createTask({
@@ -36,7 +37,7 @@ export function TasksPage() {
         due_date: due < start ? start : due,
         status,
         note: "",
-        analyzed: analyzed.trim(),
+        ...stampAnalyzed(analyzed, user.id),
       });
       setTitle("");
       setAnalyzed("");
@@ -140,6 +141,7 @@ export function TasksPage() {
                 const owner = profiles.find((p) => p.id === task.assignee_id);
                 const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
                 const canDelete = canLeadProject(task.project_id);
+                const credit = analyzedCreditLabel(task, profiles);
                 return (
                   <tr key={task.id}>
                     {isAll && <td>{projectName(task.project_id)}</td>}
@@ -173,18 +175,22 @@ export function TasksPage() {
                       </select>
                     </td>
                     <td>
-                      <textarea
-                        className="analysis-input"
-                        rows={3}
-                        defaultValue={task.analyzed ?? ""}
-                        key={`${task.id}-analyzed-${task.analyzed ?? ""}`}
-                        disabled={!canEdit}
-                        placeholder="紀錄已分析的內容"
-                        onBlur={(e) => {
-                          const value = e.target.value.trim();
-                          if (value !== (task.analyzed ?? "")) void patch(task.id, { analyzed: value });
-                        }}
-                      />
+                      <div className="analysis-cell">
+                        <textarea
+                          className="analysis-input"
+                          rows={3}
+                          defaultValue={task.analyzed ?? ""}
+                          key={`${task.id}-analyzed-${task.analyzed ?? ""}`}
+                          disabled={!canEdit}
+                          placeholder="紀錄已分析的內容"
+                          onBlur={(e) => {
+                            const value = e.target.value.trim();
+                            if (value === (task.analyzed ?? "") || !user) return;
+                            void patch(task.id, stampAnalyzed(value, user.id, task));
+                          }}
+                        />
+                        {credit && <p className="analysis-meta">{credit}</p>}
+                      </div>
                     </td>
                     {canDeleteAny && (
                       <td>

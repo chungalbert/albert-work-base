@@ -68,6 +68,8 @@ function normalizeTask(task: Task): Task {
     status: normalizeTaskStatus(task.status),
     note: task.note ?? "",
     analyzed: task.analyzed ?? "",
+    analyzed_by: task.analyzed_by ?? null,
+    analyzed_at: task.analyzed_at ?? null,
   };
 }
 
@@ -437,6 +439,8 @@ export function ensureSampleIfEmpty() {
     status: "working",
     note: "",
     analyzed: "",
+    analyzed_by: null,
+    analyzed_at: null,
   });
   save(store);
 }
