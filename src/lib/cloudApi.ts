@@ -1,3 +1,4 @@
+import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { getSupabase } from "./supabase";
 import type {
   AccountInput,
@@ -16,9 +17,7 @@ function normalizeTask(task: Task): Task {
     ...task,
     status: normalizeTaskStatus(task.status),
     note: task.note ?? "",
-    analyzed: task.analyzed ?? "",
-    analyzed_by: task.analyzed_by ?? null,
-    analyzed_at: task.analyzed_at ?? null,
+    ...syncAnalyzedFields(normalizeAnalyzedNotes(task)),
   };
 }
 

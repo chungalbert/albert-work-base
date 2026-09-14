@@ -1,10 +1,73 @@
 import { FormEvent, useState } from "react";
-import { analyzedCreditLabel, stampAnalyzed } from "../lib/analyzed";
+import {
+  addAnalyzedNote,
+  analyzedNoteCredit,
+  makeAnalyzedNote,
+  syncAnalyzedFields,
+  updateAnalyzedNote,
+} from "../lib/analyzed";
 import { api } from "../lib/api";
 import { todayISO, addDaysISO } from "../lib/dates";
-import { TASK_STATUSES, type TaskStatus } from "../lib/types";
+import { TASK_STATUSES, type AnalyzedNote, type Profile, type TaskStatus } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
+
+function AnalysisCell({
+  notes,
+  profiles,
+  canEdit,
+  userId,
+  onSave,
+}: {
+  notes: AnalyzedNote[];
+  profiles: Profile[];
+  canEdit: boolean;
+  userId: string | undefined;
+  onSave: (next: AnalyzedNote[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <div className="analysis-cell">
+      {notes.map((note) => {
+        const credit = analyzedNoteCredit(note, profiles);
+        return (
+          <div key={note.id} className="analysis-note">
+            <textarea
+              className="analysis-input"
+              rows={2}
+              defaultValue={note.text}
+              key={`${note.id}-${note.at ?? ""}`}
+              disabled={!canEdit}
+              onBlur={(e) => {
+                const value = e.target.value.trim();
+                if (value === note.text || !userId) return;
+                onSave(updateAnalyzedNote(notes, note.id, value, userId));
+              }}
+            />
+            {credit && <p className="analysis-meta">{credit}</p>}
+          </div>
+        );
+      })}
+      {canEdit && (
+        <textarea
+          className="analysis-input"
+          rows={2}
+          value={draft}
+          placeholder={notes.length ? "新增一筆分析" : "紀錄已分析的內容"}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const value = draft.trim();
+            if (!value || !userId) return;
+            setDraft("");
+            onSave(addAnalyzedNote(notes, value, userId));
+          }}
+        />
+      )}
+      {!canEdit && notes.length === 0 && <span className="analysis-empty">—</span>}
+    </div>
+  );
+}
 
 export function TasksPage() {
   const { user } = useAuth();
@@ -37,7 +100,7 @@ export function TasksPage() {
         due_date: due < start ? start : due,
         status,
         note: "",
-        ...stampAnalyzed(analyzed, user.id),
+        ...syncAnalyzedFields(analyzed.trim() ? [makeAnalyzedNote(analyzed, user.id)] : []),
       });
       setTitle("");
       setAnalyzed("");
@@ -110,7 +173,7 @@ export function TasksPage() {
                 rows={4}
                 value={analyzed}
                 onChange={(e) => setAnalyzed(e.target.value)}
-                placeholder="紀錄已分析的內容"
+                placeholder="新增任務時可先寫第一筆分析"
               />
             </div>
           </div>
@@ -141,7 +204,6 @@ export function TasksPage() {
                 const owner = profiles.find((p) => p.id === task.assignee_id);
                 const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
                 const canDelete = canLeadProject(task.project_id);
-                const credit = analyzedCreditLabel(task, profiles);
                 return (
                   <tr key={task.id}>
                     {isAll && <td>{projectName(task.project_id)}</td>}
@@ -175,22 +237,13 @@ export function TasksPage() {
                       </select>
                     </td>
                     <td>
-                      <div className="analysis-cell">
-                        <textarea
-                          className="analysis-input"
-                          rows={3}
-                          defaultValue={task.analyzed ?? ""}
-                          key={`${task.id}-analyzed-${task.analyzed ?? ""}`}
-                          disabled={!canEdit}
-                          placeholder="紀錄已分析的內容"
-                          onBlur={(e) => {
-                            const value = e.target.value.trim();
-                            if (value === (task.analyzed ?? "") || !user) return;
-                            void patch(task.id, stampAnalyzed(value, user.id, task));
-                          }}
-                        />
-                        {credit && <p className="analysis-meta">{credit}</p>}
-                      </div>
+                      <AnalysisCell
+                        notes={task.analyzed_notes}
+                        profiles={profiles}
+                        canEdit={canEdit}
+                        userId={user?.id}
+                        onSave={(next) => void patch(task.id, syncAnalyzedFields(next))}
+                      />
                     </td>
                     {canDeleteAny && (
                       <td>
