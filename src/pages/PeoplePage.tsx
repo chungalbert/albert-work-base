@@ -13,7 +13,7 @@ interface Row {
 const emptyRow = (): Row => ({ display_name: "", unit: "", email: "" });
 
 export function PeoplePage() {
-  const { project, profiles, members, role, reload, isAll } = useStore();
+  const { project, profiles, members, allMembers, role, reload, isAll, projectName, canLeadProject } = useStore();
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [paste, setPaste] = useState("");
   const [creds, setCreds] = useState<CredentialRow[]>([]);
@@ -24,18 +24,24 @@ export function PeoplePage() {
   const [pickRole, setPickRole] = useState<Role>("member");
   const [resetId, setResetId] = useState("");
   const [deleteId, setDeleteId] = useState("");
+  const [removeKey, setRemoveKey] = useState("");
 
+  const roster = isAll ? allMembers : members;
   const people = useMemo(() => {
-    return members.map((m) => ({
+    return roster.map((m) => ({
       ...m,
       profile: profiles.find((p) => p.id === m.user_id),
     }));
-  }, [members, profiles]);
+  }, [roster, profiles]);
 
   const canManage = role === "leader";
+  const showRosterActions = people.some((row) => canLeadProject(row.project_id));
   const memberIds = new Set(members.map((m) => m.user_id));
   const candidates = profiles.filter((p) => !memberIds.has(p.id));
   const allAccounts = profiles.filter((p) => !p.is_admin);
+  const colCount = 5 + (isAll ? 1 : 0) + (canManage ? 1 : 0) + (showRosterActions ? 1 : 0);
+  const leaderCount = (projectId: string) =>
+    roster.filter((m) => m.project_id === projectId && m.role === "leader").length;
 
   const applyPaste = () => {
     const parsed = paste
@@ -113,6 +119,32 @@ export function PeoplePage() {
     }
   };
 
+  const changeRole = async (projectId: string, userId: string, nextRole: Role) => {
+    setAddError("");
+    try {
+      await api.addProjectMember(projectId, userId, nextRole);
+      await reload();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "角色更新失敗");
+    }
+  };
+
+  const removeFromProject = async (projectId: string, userId: string, name: string) => {
+    const ok = window.confirm(`確定把「${name}」從「${projectName(projectId)}」移出？帳號還在，之後可以再加回來。`);
+    if (!ok) return;
+    const key = `${projectId}:${userId}`;
+    setAddError("");
+    setRemoveKey(key);
+    try {
+      await api.removeProjectMember(projectId, userId);
+      await reload();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "移出失敗");
+    } finally {
+      setRemoveKey("");
+    }
+  };
+
   const resetButton = (userId: string, name: string) => (
     <button
       className="btn btn-gold"
@@ -149,8 +181,8 @@ export function PeoplePage() {
         <div>
           <h1>人員</h1>
           <p>
-            開通帳密與加入專案是分開的。可在「所有帳號」重設密碼或刪除人員。
-            {isAll ? " 要看成員或把人加進專案，請先在右上角選單一專案。" : ""}
+            開通帳密與加入專案是分開的。專案成員可隨時改角色或移出專案；刪除帳號請到「所有帳號」。
+            {isAll ? " 要把人加進某個專案，請先在右上角選單一專案。" : ""}
           </p>
         </div>
       </div>
@@ -194,44 +226,83 @@ export function PeoplePage() {
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>{isAll ? "全部專案" : project?.name ?? "尚未選擇專案"} 成員</h2>
+        {addError && <p className="error">{addError}</p>}
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th>姓名</th>
+                {isAll && <th>專案</th>}
                 <th>單位</th>
                 <th>EMAIL</th>
                 <th>帳號</th>
                 <th>角色</th>
                 {canManage && <th>密碼</th>}
+                {showRosterActions && <th></th>}
               </tr>
             </thead>
             <tbody>
               {people.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 6 : 5} className="hint">
-                    {isAll ? "請先在右上角選一個專案，才能看成員。" : "這個專案還沒有成員。"}
+                  <td colSpan={colCount} className="hint">
+                    {isAll ? "目前沒有可見的專案成員。" : "這個專案還沒有成員。"}
                   </td>
                 </tr>
               )}
-              {people.map((row) => (
-                <tr key={`${row.project_id}-${row.user_id}`}>
-                  <td>{row.profile?.display_name}</td>
-                  <td>{row.profile?.unit}</td>
-                  <td>{row.profile?.email}</td>
-                  <td>{row.profile?.username}</td>
-                  <td>{row.role === "leader" ? "專案領導" : "專案成員"}</td>
-                  {canManage && (
+              {people.map((row) => {
+                const name = row.profile?.display_name ?? "這位人員";
+                const canEditRoster = canLeadProject(row.project_id);
+                const soleLeader = row.role === "leader" && leaderCount(row.project_id) <= 1;
+                const rowKey = `${row.project_id}:${row.user_id}`;
+                return (
+                  <tr key={rowKey}>
+                    <td>{row.profile?.display_name}</td>
+                    {isAll && <td>{projectName(row.project_id)}</td>}
+                    <td>{row.profile?.unit}</td>
+                    <td>{row.profile?.email}</td>
+                    <td>{row.profile?.username}</td>
                     <td>
-                      {row.profile?.is_admin ? (
-                        <span className="hint">請自行修改</span>
+                      {canEditRoster ? (
+                        <select
+                          value={row.role}
+                          disabled={soleLeader}
+                          title={soleLeader ? "專案至少要有一位領導" : undefined}
+                          onChange={(e) => void changeRole(row.project_id, row.user_id, e.target.value as Role)}
+                        >
+                          <option value="member">專案成員</option>
+                          <option value="leader">專案領導</option>
+                        </select>
                       ) : (
-                        resetButton(row.user_id, row.profile?.display_name ?? "這位人員")
+                        row.role === "leader" ? "專案領導" : "專案成員"
                       )}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    {canManage && (
+                      <td>
+                        {row.profile?.is_admin ? (
+                          <span className="hint">請自行修改</span>
+                        ) : canEditRoster ? (
+                          resetButton(row.user_id, name)
+                        ) : null}
+                      </td>
+                    )}
+                    {showRosterActions && (
+                      <td>
+                        {canEditRoster && (
+                          <button
+                            className="btn btn-danger"
+                            type="button"
+                            disabled={soleLeader || removeKey === rowKey}
+                            title={soleLeader ? "專案至少要有一位領導" : undefined}
+                            onClick={() => void removeFromProject(row.project_id, row.user_id, name)}
+                          >
+                            {removeKey === rowKey ? "刪除中…" : "刪除"}
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

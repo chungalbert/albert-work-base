@@ -62,6 +62,10 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.addProjectMember(projectId, userId, role);
     return localApi.addProjectMember(projectId, userId, role);
   },
+  async removeProjectMember(projectId: string, userId: string) {
+    if (hasSupabaseConfig()) return cloudApi.removeProjectMember(projectId, userId);
+    localApi.removeProjectMember(projectId, userId);
+  },
   async inviteMembers(rows: InviteInput[]) {
     if (hasSupabaseConfig()) return cloudApi.inviteMembers(rows);
     return localApi.inviteMembers(rows);
