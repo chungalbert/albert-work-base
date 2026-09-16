@@ -149,7 +149,7 @@ function AnalysisCell({
 
 export function TasksPage() {
   const { user } = useAuth();
-  const { project, tasks, profiles, members, role, reload, isAll, projectName, canLeadProject } = useStore();
+  const { project, tasks, profiles, members, allMembers, role, reload, isAll, projectName, canLeadProject } = useStore();
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState(user?.id ?? "");
   const [start, setStart] = useState(todayISO());
@@ -161,6 +161,11 @@ export function TasksPage() {
   const people = members
     .map((m) => profiles.find((p) => p.id === m.user_id))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  const peopleFor = (projectId: string) => {
+    const ids = new Set(allMembers.filter((m) => m.project_id === projectId).map((m) => m.user_id));
+    return profiles.filter((p) => ids.has(p.id));
+  };
 
   const canManage = Boolean(project && role === "leader");
   const canDeleteAny = tasks.some((task) => canLeadProject(task.project_id));
@@ -282,11 +287,26 @@ export function TasksPage() {
                 const owner = profiles.find((p) => p.id === task.assignee_id);
                 const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
                 const canDelete = canLeadProject(task.project_id);
+                const assignees = peopleFor(task.project_id);
                 return (
                   <tr key={task.id}>
                     {isAll && <td>{projectName(task.project_id)}</td>}
                     <td>{task.title}</td>
-                    <td>{owner?.display_name ?? "—"}</td>
+                    <td>
+                      <select
+                        value={task.assignee_id ?? ""}
+                        disabled={!canEdit}
+                        onChange={(e) => void patch(task.id, { assignee_id: e.target.value || null })}
+                      >
+                        <option value="">未指派</option>
+                        {assignees.map((p) => (
+                          <option key={p.id} value={p.id}>{p.display_name}</option>
+                        ))}
+                        {owner && !assignees.some((p) => p.id === owner.id) && (
+                          <option value={owner.id}>{owner.display_name}</option>
+                        )}
+                      </select>
+                    </td>
                     <td>
                       <input
                         type="date"

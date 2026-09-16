@@ -139,6 +139,12 @@ export const cloudApi = {
     return data as ProjectMember[];
   },
 
+  async listAllMembers(): Promise<ProjectMember[]> {
+    const { data, error } = await sb().from("project_members").select("*");
+    if (error) throw error;
+    return data as ProjectMember[];
+  },
+
   async myRole(projectId: string): Promise<Role | null> {
     const me = await cloudApi.currentUser();
     if (!me) return null;

@@ -46,6 +46,10 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.listMembers(projectId);
     return localApi.listMembers(projectId);
   },
+  async listAllMembers(): Promise<ProjectMember[]> {
+    if (hasSupabaseConfig()) return cloudApi.listAllMembers();
+    return localApi.listAllMembers();
+  },
   async myRole(projectId: string): Promise<Role | null> {
     if (hasSupabaseConfig()) return cloudApi.myRole(projectId);
     return localApi.myRole(projectId);
