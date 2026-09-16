@@ -318,6 +318,10 @@ export const localApi = {
     if (!profile) throw new Error("找不到這位人員");
     const existing = store.members.find((m) => m.project_id === projectId && m.user_id === userId);
     if (existing) {
+      if (existing.role === "leader" && role !== "leader") {
+        const leaders = store.members.filter((m) => m.project_id === projectId && m.role === "leader");
+        if (leaders.length <= 1) throw new Error("專案至少要有一位領導");
+      }
       existing.role = role;
       save(store);
       return existing;
@@ -326,6 +330,21 @@ export const localApi = {
     store.members.push(member);
     save(store);
     return member;
+  },
+
+  removeProjectMember(projectId: string, userId: string) {
+    if (localApi.myRole(projectId) !== "leader") {
+      throw new Error("只有專案領導或管理員可以把人移出專案");
+    }
+    const store = load();
+    const target = store.members.find((m) => m.project_id === projectId && m.user_id === userId);
+    if (!target) return;
+    if (target.role === "leader") {
+      const leaders = store.members.filter((m) => m.project_id === projectId && m.role === "leader");
+      if (leaders.length <= 1) throw new Error("專案至少要有一位領導");
+    }
+    store.members = store.members.filter((m) => !(m.project_id === projectId && m.user_id === userId));
+    save(store);
   },
 
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {

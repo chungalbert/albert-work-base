@@ -161,6 +161,12 @@ export const cloudApi = {
   },
 
   async addProjectMember(projectId: string, userId: string, role: Role): Promise<ProjectMember> {
+    const members = await cloudApi.listMembers(projectId);
+    const existing = members.find((m) => m.user_id === userId);
+    if (existing?.role === "leader" && role !== "leader") {
+      const leaders = members.filter((m) => m.role === "leader");
+      if (leaders.length <= 1) throw new Error("專案至少要有一位領導");
+    }
     const { data, error } = await sb()
       .from("project_members")
       .upsert({ project_id: projectId, user_id: userId, role })
@@ -168,6 +174,22 @@ export const cloudApi = {
       .single();
     if (error) throw error;
     return data as ProjectMember;
+  },
+
+  async removeProjectMember(projectId: string, userId: string) {
+    const members = await cloudApi.listMembers(projectId);
+    const target = members.find((m) => m.user_id === userId);
+    if (!target) return;
+    if (target.role === "leader") {
+      const leaders = members.filter((m) => m.role === "leader");
+      if (leaders.length <= 1) throw new Error("專案至少要有一位領導");
+    }
+    const { error } = await sb()
+      .from("project_members")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("user_id", userId);
+    if (error) throw error;
   },
 
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {
