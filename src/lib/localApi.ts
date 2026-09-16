@@ -187,6 +187,11 @@ export const localApi = {
     return load().members.filter((m) => m.project_id === projectId);
   },
 
+  listAllMembers(): ProjectMember[] {
+    const visible = new Set(localApi.listProjects().map((project) => project.id));
+    return load().members.filter((m) => visible.has(m.project_id));
+  },
+
   myRole(projectId: string): "leader" | "member" | null {
     const store = load();
     const user = store.profiles.find((p) => p.id === store.sessionUserId);
