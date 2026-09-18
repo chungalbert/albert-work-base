@@ -55,6 +55,7 @@ export function LoginPage() {
               <button type="button" onClick={() => setShowLogin(true)}>任務</button>
               <button type="button" onClick={() => setShowLogin(true)}>甘特圖</button>
               <button type="button" onClick={() => setShowLogin(true)}>週報</button>
+              <button type="button" onClick={() => setShowLogin(true)}>教學</button>
             </nav>
             <div className="auth-chip">
               <span className="muted-label">未登入</span>
