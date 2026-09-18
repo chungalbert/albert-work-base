@@ -6,7 +6,7 @@ export const TASK_STATUSES = [
   { id: "verify", label: "Verify" },
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
-export type ViewId = "projects" | "people" | "tasks" | "gantt" | "report";
+export type ViewId = "projects" | "people" | "tasks" | "gantt" | "report" | "guides";
 
 export function taskStatusLabel(status: string): string {
   return TASK_STATUSES.find((item) => item.id === status)?.label ?? status;

@@ -680,6 +680,134 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .status-closing { background: #3b2f12; color: #fde68a; }
 .status-verify { background: #16351f; color: #86efac; }
 
+.guide-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.guide-card {
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: inherit;
+}
+
+.guide-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.guide-kicker {
+  margin: 0 0 4px;
+  color: #93c5fd;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.guide-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.guide-toc a {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.guide-toc a:hover {
+  color: var(--ink);
+  text-decoration: none;
+  border-color: #3b82f6;
+}
+
+.guide-section h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.guide-step {
+  margin-top: 8px;
+}
+
+.guide-step + .guide-step {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #1e2a40;
+}
+
+.guide-step h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.guide-step-n {
+  flex: 0 0 auto;
+  min-width: 1.6em;
+  color: #93c5fd;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-step p { margin: 0 0 10px; color: #d5deea; }
+
+.guide-code {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #0b1220;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow-x: auto;
+  color: #dbeafe;
+  font-size: 13px;
+}
+
+.guide-callout {
+  border-left: 3px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 0 10px 10px 0;
+  padding: 10px 12px;
+}
+
+.guide-warn {
+  border-left-color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.guide-shots {
+  margin: 0 0 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.guide-shots img {
+  width: 100%;
+  max-width: 720px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0b1220;
+}
+
+.guide-shots figcaption {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .foot { display: none; }
 
 @media (max-width: 800px) {
