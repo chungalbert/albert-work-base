@@ -7,6 +7,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { TasksPage } from "./pages/TasksPage";
 import { ReportPage } from "./pages/ReportPage";
 import { GuidesPage } from "./pages/GuidesPage";
+import { TrackerPage } from "./pages/TrackerPage";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
@@ -21,6 +22,7 @@ const NAV: { id: ViewId; label: string }[] = [
   { id: "tasks", label: "任務" },
   { id: "gantt", label: "甘特圖" },
   { id: "report", label: "週報" },
+  { id: "tracker", label: "追蹤" },
   { id: "guides", label: "教學" },
 ];
 
@@ -85,6 +87,7 @@ function Shell() {
           </Suspense>
         )}
         {currentView === "report" && <ReportPage />}
+        {currentView === "tracker" && <TrackerPage />}
         {currentView === "guides" && <GuidesPage />}
       </main>
       <footer className="site-footer">版權所有 Albert 工作基地 · V1</footer>
