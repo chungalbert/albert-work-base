@@ -14,7 +14,14 @@ function text(sheet: XLSX.WorkSheet, r: number, c: number): string {
     const d = String(value.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
-  return String(value ?? "").replace(/\u00a0/g, " ").trim();
+  return String(value ?? "").replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").trim();
+}
+
+function personName(value: string): string {
+  const raw = value.replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  if (/26h2|\bosr\b/i.test(raw) && !/[_a-z]{2,}/i.test(raw.replace(/26h2|osr/ig, ""))) return "";
+  return raw;
 }
 
 function issueId(title: string): string {
@@ -34,28 +41,40 @@ function findHeader(sheet: XLSX.WorkSheet): { header: number; sub: number; cols:
       if (value === "product name" || value === "產品" || value.includes("product name")) product = c;
       if (value === "wave") wave = c;
     }
+    if (product >= 0 && wave < 0) {
+      for (let c = range.s.c; c <= range.e.c; c += 1) {
+        if (text(sheet, r + 1, c).toLowerCase() === "wave") wave = c;
+      }
+    }
     if (product < 0 || wave < 0) continue;
-    const cols: Record<string, number> = { product, wave };
+    let issueStart = range.e.c + 1;
     for (let c = range.s.c; c <= range.e.c; c += 1) {
+      if (/LEN[-\s]?\d+/i.test(text(sheet, r, c))) {
+        issueStart = c;
+        break;
+      }
+    }
+    const cols: Record<string, number> = { product, wave };
+    for (let c = range.s.c; c < issueStart; c += 1) {
       const top = text(sheet, r, c).toLowerCase();
       const sub = text(sheet, r + 1, c).toLowerCase();
       if (top.includes("spms")) cols.spms = c;
       if (top === "no." || top === "no") cols.no = c;
       if (top === "odm") cols.odm = c;
       if (top === "ibv") cols.ibv = c;
-      if (top.includes("platform")) cols.platform = c;
-      if (top.includes("mt")) cols.mt = c;
+      if (top === "platform" || top.startsWith("platform ")) cols.platform = c;
+      if (top === "mt" || top === "mt code" || top.startsWith("mt ")) cols.mt = c;
       if (top === "eol") cols.eol = c;
       if ((top === "owner" || top === "pm") && cols.owner == null) cols.owner = c;
       if (sub === "pm" || sub.includes("pm owner") || top === "pm") cols.pmOwner = c;
       if (sub.includes("affected")) cols.affected = c;
-      if (sub.includes("bios")) cols.bios = c;
+      if (sub.includes("bios owner")) cols.biosOwner = c;
+      else if (sub.includes("bios")) cols.bios = c;
       if (sub.includes("release")) cols.release = c;
       if (sub.includes("pre-test") || sub.includes("pretest")) cols.saPre = c;
       if (sub.includes("test schedule")) cols.test = c;
       if (sub === "ecrb") cols.ecrb = c;
       if (sub.includes("sign")) cols.signoff = c;
-      if (sub.includes("bios owner")) cols.biosOwner = c;
       if (sub.includes("dqa")) cols.dqaOwner = c;
       if (sub.includes("sa owner")) cols.saOwner = c;
     }
@@ -78,6 +97,27 @@ function rowKey(row: TrackerRow): string {
   const mt = row.mt.replace(/\s+/g, "").toLowerCase();
   const product = row.product.replace(/\s+/g, "").toLowerCase();
   return `${mt}|${product}`;
+}
+
+function mergeKey(row: TrackerRow): string {
+  const mt = row.mt.replace(/\s+/g, "").toLowerCase();
+  return mt ? `${rowKey(row)}|${mt}` : rowKey(row);
+}
+
+function uniquifyRowIds(rows: TrackerRow[]) {
+  const groups = new Map<string, TrackerRow[]>();
+  rows.forEach((row) => {
+    const list = groups.get(row.id) ?? [];
+    list.push(row);
+    groups.set(row.id, list);
+  });
+  groups.forEach((list) => {
+    if (list.length < 2) return;
+    list.forEach((row) => {
+      const extra = row.mt.replace(/\s+/g, "").toLowerCase() || row.code.replace(/\s+/g, "").toLowerCase();
+      if (extra) row.id = `${row.id}-${extra}`;
+    });
+  });
 }
 
 function mergeRow(prev: TrackerRow, incoming: TrackerRow): TrackerRow {
@@ -161,13 +201,14 @@ function parseSheet(sheet: XLSX.WorkSheet, fileName: string): TrackerCampaign | 
       pmOwner: (cols.pmOwner != null ? text(sheet, r, cols.pmOwner) : "")
         || (cols.owner != null ? text(sheet, r, cols.owner) : ""),
       biosOwner: cols.biosOwner != null ? text(sheet, r, cols.biosOwner).replace(/\n/g, "/") : "",
-      dqaOwner: cols.dqaOwner != null ? text(sheet, r, cols.dqaOwner) : "",
+      dqaOwner: personName(cols.dqaOwner != null ? text(sheet, r, cols.dqaOwner) : ""),
       saOwner: cols.saOwner != null ? text(sheet, r, cols.saOwner) : "",
       impacts,
     });
     row.id = rowKey(row);
     rows.push(row);
   }
+  uniquifyRowIds(rows);
   if (rows.length === 0) return null;
   const titleCell = text(sheet, 0, 2) || text(sheet, 0, 0) || fileName.replace(/\.xlsx?$/i, "");
   return {
@@ -196,9 +237,9 @@ export function parseTrackerWorkbook(buffer: ArrayBuffer, fileName: string): Tra
 }
 
 export function mergeCampaigns(current: TrackerCampaign, incoming: TrackerCampaign): TrackerCampaign {
-  const map = new Map(current.rows.map((row) => [rowKey(row), row]));
+  const map = new Map(current.rows.map((row) => [mergeKey(row), row]));
   incoming.rows.forEach((row) => {
-    const key = rowKey(row);
+    const key = mergeKey(row);
     const prev = map.get(key);
     map.set(key, prev ? mergeRow(prev, row) : row);
   });
