@@ -41,7 +41,7 @@ export function parseReleaseValue(value: unknown, year: number): { date: string;
     const excel = new Date(Math.round((value - 25569) * 86400 * 1000));
     if (!Number.isNaN(excel.getTime())) return parseReleaseValue(excel, year);
   }
-  const raw = String(value ?? "").replace(/\u00a0/g, " ").trim();
+  const raw = String(value ?? "").replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").trim();
   if (!raw) return { date: "", note: "" };
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { date: raw, note: "" };
   const chunks = raw.split(/(?:->|>)+/);

@@ -2,6 +2,8 @@ import seed from "../content/ipu4Seed.json";
 import { emptyRow, type TrackerCampaign, type TrackerRow } from "./trackerTypes";
 
 const KEY = "awb-trackers-v1";
+const SEED_REV = "2026-09-23-compal0923-2";
+const SEED_REV_KEY = "awb-tracker-seed-rev";
 
 function normalizeRow(row: Partial<TrackerRow>): TrackerRow {
   const next = { ...emptyRow(), ...row, impacts: row.impacts ?? {} };
@@ -36,10 +38,20 @@ function write(campaigns: TrackerCampaign[]) {
 
 export function listTrackers(): TrackerCampaign[] {
   const current = read();
-  if (current.length > 0) return current;
-  const seeded = normalize([seed as unknown as TrackerCampaign]);
-  write(seeded);
-  return seeded;
+  const applied = localStorage.getItem(SEED_REV_KEY);
+  const bundled = normalize([seed as unknown as TrackerCampaign])[0];
+  if (current.length === 0) {
+    write([bundled]);
+    localStorage.setItem(SEED_REV_KEY, SEED_REV);
+    return [bundled];
+  }
+  if (applied !== SEED_REV) {
+    const next = normalize([bundled, ...current.filter((item) => item.id !== bundled.id)]);
+    write(next);
+    localStorage.setItem(SEED_REV_KEY, SEED_REV);
+    return next;
+  }
+  return current;
 }
 
 export function saveTrackers(campaigns: TrackerCampaign[]) {
