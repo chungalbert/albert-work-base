@@ -2,7 +2,7 @@ import seed from "../content/ipu4Seed.json";
 import { emptyRow, type TrackerCampaign, type TrackerRow } from "./trackerTypes";
 
 const KEY = "awb-trackers-v1";
-const SEED_REV = "2026-09-23-compal0923-2";
+const SEED_REV = "2026-09-29-compal0929";
 const SEED_REV_KEY = "awb-tracker-seed-rev";
 
 function normalizeRow(row: Partial<TrackerRow>): TrackerRow {
