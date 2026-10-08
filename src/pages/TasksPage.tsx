@@ -200,7 +200,7 @@ export function TasksPage() {
   };
 
   return (
-    <section>
+    <section className="tasks-page">
       <div className="page-head">
         <div>
           <h1>{isAll ? "全部專案的任務" : project ? `${project.name} 的任務` : "任務"}</h1>
@@ -217,7 +217,7 @@ export function TasksPage() {
       </div>
 
       {canManage && (
-        <form className="panel" onSubmit={create} style={{ marginBottom: 16 }}>
+        <form className="panel task-create" onSubmit={create}>
           <div className="grid-2">
             <div className="field">
               <label>任務名稱</label>
@@ -267,98 +267,92 @@ export function TasksPage() {
         </form>
       )}
 
-      <div className="panel">
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                {isAll && <th>專案</th>}
-                <th>任務</th>
-                <th>負責人</th>
-                <th>開始</th>
-                <th>Deadline</th>
-                <th>當前狀態</th>
-                <th>已分析內容</th>
-                {canDeleteAny && <th></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const owner = profiles.find((p) => p.id === task.assignee_id);
-                const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
-                const canDelete = canLeadProject(task.project_id);
-                const assignees = peopleFor(task.project_id);
-                return (
-                  <tr key={task.id}>
-                    {isAll && <td>{projectName(task.project_id)}</td>}
-                    <td>{task.title}</td>
-                    <td>
-                      <select
-                        value={task.assignee_id ?? ""}
-                        disabled={!canEdit}
-                        onChange={(e) => void patch(task.id, { assignee_id: e.target.value || null })}
-                      >
-                        <option value="">未指派</option>
-                        {assignees.map((p) => (
-                          <option key={p.id} value={p.id}>{p.display_name}</option>
-                        ))}
-                        {owner && !assignees.some((p) => p.id === owner.id) && (
-                          <option value={owner.id}>{owner.display_name}</option>
-                        )}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        value={task.start_date}
-                        disabled={!canEdit}
-                        onChange={(e) => void patch(task.id, { start_date: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        value={task.due_date}
-                        disabled={!canEdit}
-                        onChange={(e) => void patch(task.id, { due_date: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={task.status}
-                        disabled={!canEdit}
-                        onChange={(e) => void patch(task.id, { status: e.target.value as TaskStatus })}
-                      >
-                        {TASK_STATUSES.map((item) => (
-                          <option key={item.id} value={item.id}>{item.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <AnalysisCell
-                        notes={task.analyzed_notes}
-                        profiles={profiles}
-                        canEdit={canEdit}
-                        userId={user?.id}
-                        onSave={(next) => void patch(task.id, syncAnalyzedFields(next))}
-                      />
-                    </td>
-                    {canDeleteAny && (
-                      <td>
-                        {canDelete && (
-                          <button className="btn" type="button" onClick={() => void api.deleteTask(task.id).then(reload)}>
-                            刪除
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {tasks.length === 0 ? (
+        <div className="panel task-empty">這個範圍還沒有任務。</div>
+      ) : (
+        <div className="task-list">
+          {tasks.map((task) => {
+            const owner = profiles.find((p) => p.id === task.assignee_id);
+            const canEdit = canLeadProject(task.project_id) || task.assignee_id === user?.id;
+            const canDelete = canLeadProject(task.project_id);
+            const assignees = peopleFor(task.project_id);
+            return (
+              <article key={task.id} className="task-card">
+                <header className="task-card-head">
+                  <div>
+                    {isAll && <p className="task-project">{projectName(task.project_id)}</p>}
+                    <h2 className="task-title">{task.title}</h2>
+                  </div>
+                  {canDeleteAny && canDelete && (
+                    <button className="btn task-delete" type="button" onClick={() => void api.deleteTask(task.id).then(reload)}>
+                      刪除
+                    </button>
+                  )}
+                </header>
+                <div className="task-meta">
+                  <label className="task-field">
+                    <span>負責人</span>
+                    <select
+                      value={task.assignee_id ?? ""}
+                      disabled={!canEdit}
+                      onChange={(e) => void patch(task.id, { assignee_id: e.target.value || null })}
+                    >
+                      <option value="">未指派</option>
+                      {assignees.map((p) => (
+                        <option key={p.id} value={p.id}>{p.display_name}</option>
+                      ))}
+                      {owner && !assignees.some((p) => p.id === owner.id) && (
+                        <option value={owner.id}>{owner.display_name}</option>
+                      )}
+                    </select>
+                  </label>
+                  <label className="task-field">
+                    <span>開始</span>
+                    <input
+                      type="date"
+                      value={task.start_date}
+                      disabled={!canEdit}
+                      onChange={(e) => void patch(task.id, { start_date: e.target.value })}
+                    />
+                  </label>
+                  <label className="task-field">
+                    <span>Deadline</span>
+                    <input
+                      type="date"
+                      value={task.due_date}
+                      disabled={!canEdit}
+                      onChange={(e) => void patch(task.id, { due_date: e.target.value })}
+                    />
+                  </label>
+                  <label className="task-field">
+                    <span>當前狀態</span>
+                    <select
+                      className={`status-select status-${task.status}`}
+                      value={task.status}
+                      disabled={!canEdit}
+                      onChange={(e) => void patch(task.id, { status: e.target.value as TaskStatus })}
+                    >
+                      {TASK_STATUSES.map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="task-analysis">
+                  <p className="task-analysis-label">已分析內容</p>
+                  <AnalysisCell
+                    notes={task.analyzed_notes}
+                    profiles={profiles}
+                    canEdit={canEdit}
+                    userId={user?.id}
+                    onSave={(next) => void patch(task.id, syncAnalyzedFields(next))}
+                  />
+                </div>
+              </article>
+            );
+          })}
         </div>
-      </div>
+      )}
     </section>
   );
 }
