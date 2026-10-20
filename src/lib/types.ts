@@ -6,7 +6,24 @@ export const TASK_STATUSES = [
   { id: "verify", label: "Verify" },
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
-export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes";
+export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes" | "chat";
+
+export type ChatRole = "user" | "assistant" | "system";
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  created_at: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+}
 
 export const NOTE_COLORS = ["blue", "purple", "green", "yellow", "pink", "orange"] as const;
 export type NoteColor = (typeof NOTE_COLORS)[number];

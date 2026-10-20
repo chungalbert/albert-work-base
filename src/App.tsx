@@ -7,6 +7,7 @@ import { ProjectsIssuesPage } from "./pages/ProjectsIssuesPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { GuidesPage } from "./pages/GuidesPage";
 import { NotesPage } from "./pages/NotesPage";
+import { ChatPage } from "./pages/ChatPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -35,6 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "guides", label: "教學", icon: "book" },
       { id: "notes", label: "Note", icon: "note" },
+      { id: "chat", label: "Chat", icon: "chat" },
     ],
   },
   {
@@ -99,6 +101,12 @@ function NavIcon({ name }: { name: string }) {
           <path d="M16 17H8" />
         </svg>
       );
+    case "chat":
+      return (
+        <svg {...common}>
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
     case "users":
       return (
         <svg {...common}>
@@ -138,7 +146,8 @@ function Shell() {
   const isProjectIssue = currentView === "projects";
   const isPersonnel = currentView === "people";
   const isNotes = currentView === "notes";
-  const hideChrome = isProjectIssue || isPersonnel || isNotes;
+  const isChat = currentView === "chat";
+  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -146,7 +155,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}`}
     >
       <aside className="sidebar" aria-label="KSSW navigation">
         <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
@@ -245,7 +254,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}`}
         >
           {!hideChrome && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
@@ -263,6 +272,9 @@ function Shell() {
           {currentView === "guides" && <GuidesPage />}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />
+          )}
+          {currentView === "chat" && (
+            <ChatPage onGoDashboard={() => setView("home")} />
           )}
         </main>
       </div>
