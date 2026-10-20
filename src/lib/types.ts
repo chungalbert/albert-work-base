@@ -24,6 +24,14 @@ export function isTaskOpen(status: string): boolean {
   return normalizeTaskStatus(status) !== "verify";
 }
 
+export const PERSONNEL_ROLES = ["Admin", "DM", "DL", "DE"] as const;
+export type PersonnelRole = (typeof PERSONNEL_ROLES)[number];
+
+export interface PersonnelColumn {
+  id: string;
+  label: string;
+}
+
 export interface Profile {
   id: string;
   username: string;
@@ -31,6 +39,17 @@ export interface Profile {
   unit: string;
   email: string;
   is_admin: boolean;
+  /** Org role shown on Personnel (Admin / DM / DL / DE). */
+  personnel_role?: PersonnelRole;
+  /** Values for user-defined Personnel columns. */
+  custom?: Record<string, string>;
+}
+
+export function normalizePersonnelRole(profile: Pick<Profile, "is_admin" | "personnel_role">): PersonnelRole {
+  if (profile.personnel_role && (PERSONNEL_ROLES as readonly string[]).includes(profile.personnel_role)) {
+    return profile.personnel_role;
+  }
+  return profile.is_admin ? "Admin" : "DE";
 }
 
 export interface Project {

@@ -1,6 +1,13 @@
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { isTaskOpen } from "../lib/types";
+import {
+  isTaskOpen,
+  normalizePersonnelRole,
+  PERSONNEL_ROLES,
+  type PersonnelColumn,
+  type PersonnelRole,
+  type Profile,
+} from "../lib/types";
 import { useStore } from "../context/StoreContext";
 import { DEFAULT_PASSWORD } from "../lib/util";
 
@@ -18,16 +25,22 @@ function avatarTone(name: string): string {
   return tones[hash];
 }
 
-function roleLabel(isAdmin: boolean, hasLeader: boolean): string {
-  if (isAdmin) return "Admin";
-  if (hasLeader) return "Leader";
-  return "Member";
-}
-
 export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const { profiles, allMembers, allTasks, projects, reload } = useStore();
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [columns, setColumns] = useState<PersonnelColumn[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newColLabel, setNewColLabel] = useState("");
+  const [projectPickerId, setProjectPickerId] = useState<string | null>(null);
+
+  const refreshColumns = async () => {
+    setColumns(await api.listPersonnelColumns());
+  };
+
+  useEffect(() => {
+    void refreshColumns();
+  }, []);
 
   const rows = useMemo(() => {
     return profiles.map((profile) => {
@@ -36,19 +49,74 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       const projectNames = projectIds
         .map((id) => projects.find((p) => p.id === id)?.name)
         .filter((name): name is string => Boolean(name));
-      const hasLeader = memberships.some((m) => m.role === "leader");
       const issues = allTasks.filter(
         (t) => t.assignee_id === profile.id && isTaskOpen(t.status),
       ).length;
       return {
         profile,
+        projectIds,
         projectNames,
         projectCount: projectNames.length,
-        role: roleLabel(profile.is_admin, hasLeader),
+        role: normalizePersonnelRole(profile),
         issues,
       };
     });
   }, [profiles, allMembers, allTasks, projects]);
+
+  const patchProfile = async (
+    userId: string,
+    patch: Parameters<typeof api.updateProfile>[1],
+  ) => {
+    setError("");
+    setBusyId(userId);
+    try {
+      await api.updateProfile(userId, patch);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const setProjects = async (userId: string, projectIds: string[]) => {
+    setError("");
+    setBusyId(userId);
+    try {
+      await api.setPersonProjects(userId, projectIds);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Project update failed");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const onAddColumn = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    try {
+      await api.addPersonnelColumn(newColLabel);
+      setNewColLabel("");
+      setAddOpen(false);
+      await refreshColumns();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Add column failed");
+    }
+  };
+
+  const onRemoveColumn = async (columnId: string, label: string) => {
+    const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
+    if (!ok) return;
+    setError("");
+    try {
+      await api.removePersonnelColumn(columnId);
+      await refreshColumns();
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Remove column failed");
+    }
+  };
 
   const resetPassword = async (userId: string, name: string) => {
     const ok = window.confirm(`Reset password for “${name}” to ${DEFAULT_PASSWORD}?`);
@@ -79,6 +147,8 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     }
   };
 
+  const colSpan = 7 + columns.length;
+
   return (
     <div className="personnel-page">
       <header className="personnel-toolbar">
@@ -100,9 +170,38 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           <span className="personnel-bc-sep" aria-hidden="true">›</span>
           <span className="personnel-bc-current">Personnel</span>
         </nav>
-        <button type="button" className="personnel-add-col" title="Custom columns coming later">
-          + ADD COLUMN
-        </button>
+
+        <div className="personnel-add-wrap">
+          <button
+            type="button"
+            className="personnel-add-col"
+            aria-expanded={addOpen}
+            onClick={() => setAddOpen((v) => !v)}
+          >
+            + ADD COLUMN
+          </button>
+          {addOpen && (
+            <form className="personnel-add-popover" onSubmit={onAddColumn}>
+              <label>
+                Column name
+                <input
+                  value={newColLabel}
+                  onChange={(e) => setNewColLabel(e.target.value)}
+                  placeholder="e.g. Team"
+                  autoFocus
+                />
+              </label>
+              <div className="personnel-add-actions">
+                <button type="button" className="personnel-btn-ghost" onClick={() => setAddOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="personnel-btn-primary" disabled={!newColLabel.trim()}>
+                  Add
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </header>
 
       {error && <p className="personnel-error">{error}</p>}
@@ -114,9 +213,23 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
               <th>MEMBER</th>
               <th>ID</th>
               <th>PHONE</th>
-              <th>COPILOT</th>
               <th>ROLE</th>
               <th>PROJECTS</th>
+              {columns.map((col) => (
+                <th key={col.id}>
+                  <span className="personnel-col-head">
+                    {col.label.toUpperCase()}
+                    <button
+                      type="button"
+                      className="personnel-col-remove"
+                      title={`Remove ${col.label}`}
+                      onClick={() => void onRemoveColumn(col.id, col.label)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                </th>
+              ))}
               <th>ISSUES</th>
               <th>ACTIONS</th>
             </tr>
@@ -124,79 +237,211 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="personnel-empty">No personnel found.</td>
+                <td colSpan={colSpan} className="personnel-empty">No personnel found.</td>
               </tr>
             ) : (
-              rows.map(({ profile, projectNames, projectCount, role, issues }) => (
-                <tr key={profile.id}>
-                  <td>
-                    <div className="personnel-member">
-                      <span className={`personnel-avatar ${avatarTone(profile.display_name)}`} aria-hidden="true">
-                        {initials(profile.display_name)}
-                      </span>
-                      <div>
-                        <strong>{profile.display_name}</strong>
-                        <span className="personnel-email">{profile.email}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="personnel-mono">{profile.username}</td>
-                  <td className="personnel-muted">{profile.unit?.trim() || "—"}</td>
-                  <td className="personnel-muted">—</td>
-                  <td>
-                    <span className="personnel-role">{role}</span>
-                  </td>
-                  <td>
-                    <div className="personnel-projects">
-                      {projectCount === 0 ? (
-                        <em className="personnel-unassigned">Unassigned</em>
-                      ) : (
-                        <>
-                          <span>{projectCount} project{projectCount === 1 ? "" : "s"}</span>
-                          <span className="personnel-project-names">{projectNames.join(", ")}</span>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      className={`personnel-issue-badge${
-                        issues === 0 ? " zero" : issues >= 5 ? " high" : " mid"
-                      }`}
-                    >
-                      {issues}
-                    </span>
-                  </td>
-                  <td>
-                    {profile.is_admin ? (
-                      <span className="personnel-muted">Self-manage</span>
-                    ) : (
-                      <div className="personnel-actions">
-                        <button
-                          type="button"
-                          className="personnel-link"
-                          disabled={busyId === profile.id}
-                          onClick={() => void resetPassword(profile.id, profile.display_name)}
-                        >
-                          Reset pw
-                        </button>
-                        <button
-                          type="button"
-                          className="personnel-link danger"
-                          disabled={busyId === profile.id}
-                          onClick={() => void deletePerson(profile.id, profile.display_name)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
+              rows.map(({ profile, projectIds, projectNames, projectCount, role, issues }) => (
+                <PersonRow
+                  key={profile.id}
+                  profile={profile}
+                  role={role}
+                  projectIds={projectIds}
+                  projectNames={projectNames}
+                  projectCount={projectCount}
+                  issues={issues}
+                  columns={columns}
+                  projects={projects}
+                  busy={busyId === profile.id}
+                  pickerOpen={projectPickerId === profile.id}
+                  onTogglePicker={() =>
+                    setProjectPickerId((id) => (id === profile.id ? null : profile.id))
+                  }
+                  onPatch={(patch) => void patchProfile(profile.id, patch)}
+                  onSetProjects={(ids) => void setProjects(profile.id, ids)}
+                  onReset={() => void resetPassword(profile.id, profile.display_name)}
+                  onDelete={() => void deletePerson(profile.id, profile.display_name)}
+                />
               ))
             )}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function PersonRow({
+  profile,
+  role,
+  projectIds,
+  projectNames,
+  projectCount,
+  issues,
+  columns,
+  projects,
+  busy,
+  pickerOpen,
+  onTogglePicker,
+  onPatch,
+  onSetProjects,
+  onReset,
+  onDelete,
+}: {
+  profile: Profile;
+  role: PersonnelRole;
+  projectIds: string[];
+  projectNames: string[];
+  projectCount: number;
+  issues: number;
+  columns: PersonnelColumn[];
+  projects: { id: string; name: string }[];
+  busy: boolean;
+  pickerOpen: boolean;
+  onTogglePicker: () => void;
+  onPatch: (patch: Parameters<typeof api.updateProfile>[1]) => void;
+  onSetProjects: (ids: string[]) => void;
+  onReset: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <tr>
+      <td>
+        <div className="personnel-member">
+          <span className={`personnel-avatar ${avatarTone(profile.display_name)}`} aria-hidden="true">
+            {initials(profile.display_name)}
+          </span>
+          <div className="personnel-member-fields">
+            <input
+              className="personnel-input name"
+              defaultValue={profile.display_name}
+              key={`${profile.id}-name-${profile.display_name}`}
+              disabled={busy}
+              aria-label="Display name"
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next && next !== profile.display_name) onPatch({ display_name: next });
+              }}
+            />
+            <input
+              className="personnel-input email"
+              defaultValue={profile.email}
+              key={`${profile.id}-email-${profile.email}`}
+              disabled={busy}
+              aria-label="Email"
+              onBlur={(e) => {
+                const next = e.target.value.trim().toLowerCase();
+                if (next && next !== profile.email) onPatch({ email: next });
+              }}
+            />
+          </div>
+        </div>
+      </td>
+      <td className="personnel-mono">{profile.username}</td>
+      <td>
+        <input
+          className="personnel-input"
+          defaultValue={profile.unit}
+          key={`${profile.id}-phone-${profile.unit}`}
+          placeholder="—"
+          disabled={busy}
+          aria-label="Phone"
+          onBlur={(e) => {
+            const next = e.target.value.trim();
+            if (next !== (profile.unit ?? "")) onPatch({ unit: next });
+          }}
+        />
+      </td>
+      <td>
+        <select
+          className="personnel-select"
+          value={role}
+          disabled={busy}
+          aria-label="Role"
+          onChange={(e) => onPatch({ personnel_role: e.target.value as PersonnelRole })}
+        >
+          {PERSONNEL_ROLES.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </td>
+      <td>
+        <div className="personnel-projects-edit">
+          <button type="button" className="personnel-projects-btn" onClick={onTogglePicker} disabled={busy}>
+            {projectCount === 0 ? (
+              <em className="personnel-unassigned">Unassigned</em>
+            ) : (
+              <>
+                <span>{projectCount} project{projectCount === 1 ? "" : "s"}</span>
+                <span className="personnel-project-names">{projectNames.join(", ")}</span>
+              </>
+            )}
+            <span className="personnel-edit-icon" aria-hidden="true">✎</span>
+          </button>
+          {pickerOpen && (
+            <div className="personnel-project-picker">
+              {projects.length === 0 ? (
+                <p className="personnel-muted">No projects yet.</p>
+              ) : (
+                projects.map((p) => {
+                  const checked = projectIds.includes(p.id);
+                  return (
+                    <label key={p.id} className="personnel-check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={busy}
+                        onChange={() => {
+                          const next = checked
+                            ? projectIds.filter((id) => id !== p.id)
+                            : [...projectIds, p.id];
+                          onSetProjects(next);
+                        }}
+                      />
+                      {p.name}
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+      {columns.map((col) => (
+        <td key={col.id}>
+          <input
+            className="personnel-input"
+            defaultValue={profile.custom?.[col.id] ?? ""}
+            key={`${profile.id}-${col.id}-${profile.custom?.[col.id] ?? ""}`}
+            disabled={busy}
+            aria-label={col.label}
+            onBlur={(e) => {
+              const next = e.target.value;
+              if (next !== (profile.custom?.[col.id] ?? "")) {
+                onPatch({ custom: { [col.id]: next } });
+              }
+            }}
+          />
+        </td>
+      ))}
+      <td>
+        <span
+          className={`personnel-issue-badge${
+            issues === 0 ? " zero" : issues >= 5 ? " high" : " mid"
+          }`}
+        >
+          {issues}
+        </span>
+      </td>
+      <td>
+        <div className="personnel-actions">
+          <button type="button" className="personnel-link" disabled={busy} onClick={onReset}>
+            Reset pw
+          </button>
+          <button type="button" className="personnel-link danger" disabled={busy} onClick={onDelete}>
+            Delete
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
