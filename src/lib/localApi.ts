@@ -4,13 +4,15 @@ import type {
   CredentialRow,
   InviteInput,
   AccountInput,
+  PersonnelColumn,
+  PersonnelRole,
   Profile,
   Project,
   ProjectMember,
   Role,
   Task,
 } from "./types";
-import { normalizeTaskStatus } from "./types";
+import { normalizePersonnelRole, normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
@@ -24,18 +26,31 @@ interface Store {
   members: ProjectMember[];
   tasks: Task[];
   passwordScheme?: number;
+  personnelColumns?: PersonnelColumn[];
 }
 
 const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
+
+function normalizeProfile(profile: Profile): Profile {
+  const personnel_role = normalizePersonnelRole(profile);
+  return {
+    ...profile,
+    personnel_role,
+    is_admin: personnel_role === "Admin",
+    custom: profile.custom ?? {},
+  };
+}
 
 function emptyStore(): Store {
   const admin: Profile = {
     id: ADMIN_ID,
     username: "admin",
     display_name: "Albert",
-    unit: "工作基地",
+    unit: "",
     email: "admin@local",
     is_admin: true,
+    personnel_role: "Admin",
+    custom: {},
   };
   return {
     sessionUserId: null,
@@ -44,33 +59,7 @@ function emptyStore(): Store {
     projects: [],
     members: [],
     tasks: [],
-  };
-}
-
-function pruneNonAdminPeople(store: Store): Store {
-  const admins = store.profiles.filter((p) => p.is_admin);
-  if (admins.length === 0) return emptyStore();
-  const keep = new Set(admins.map((p) => p.id));
-  const profiles = admins;
-  const passwordHashes: Record<string, string> = {};
-  for (const id of keep) {
-    if (store.passwordHashes[id]) passwordHashes[id] = store.passwordHashes[id];
-  }
-  const members = (store.members ?? []).filter((m) => keep.has(m.user_id));
-  const tasks = (store.tasks ?? []).map((task) =>
-    task.assignee_id && !keep.has(task.assignee_id)
-      ? { ...task, assignee_id: admins[0]?.id ?? null }
-      : task,
-  );
-  const sessionUserId =
-    store.sessionUserId && keep.has(store.sessionUserId) ? store.sessionUserId : null;
-  return {
-    ...store,
-    profiles,
-    passwordHashes,
-    members,
-    tasks,
-    sessionUserId,
+    personnelColumns: [],
   };
 }
 
@@ -80,11 +69,9 @@ function load(): Store {
     if (!raw) return emptyStore();
     const parsed = JSON.parse(raw) as Store;
     if (!parsed.profiles?.length) return emptyStore();
-    const pruned = pruneNonAdminPeople(parsed);
-    const removed = pruned.profiles.length !== parsed.profiles.length
-      || (pruned.members?.length ?? 0) !== (parsed.members?.length ?? 0);
-    if (removed) save(pruned);
-    return pruned;
+    parsed.profiles = parsed.profiles.map(normalizeProfile);
+    if (!parsed.personnelColumns) parsed.personnelColumns = [];
+    return parsed;
   } catch {
     return emptyStore();
   }
@@ -163,7 +150,115 @@ export const localApi = {
   },
 
   listProfiles(): Profile[] {
-    return load().profiles;
+    return load().profiles.map(normalizeProfile);
+  },
+
+  listPersonnelColumns(): PersonnelColumn[] {
+    return [...(load().personnelColumns ?? [])];
+  },
+
+  addPersonnelColumn(label: string): PersonnelColumn {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("欄位名稱不能空白");
+    const col: PersonnelColumn = { id: crypto.randomUUID(), label: trimmed };
+    store.personnelColumns = [...(store.personnelColumns ?? []), col];
+    save(store);
+    return col;
+  },
+
+  removePersonnelColumn(columnId: string) {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    store.personnelColumns = (store.personnelColumns ?? []).filter((c) => c.id !== columnId);
+    for (const profile of store.profiles) {
+      if (profile.custom && columnId in profile.custom) {
+        const next = { ...profile.custom };
+        delete next[columnId];
+        profile.custom = next;
+      }
+    }
+    save(store);
+  },
+
+  updateProfile(
+    userId: string,
+    patch: {
+      display_name?: string;
+      unit?: string;
+      email?: string;
+      personnel_role?: PersonnelRole;
+      custom?: Record<string, string>;
+    },
+  ): Profile {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const profile = store.profiles.find((p) => p.id === userId);
+    if (!profile) throw new Error("找不到這位人員");
+
+    if (patch.display_name !== undefined) {
+      const name = patch.display_name.trim();
+      if (!name) throw new Error("姓名不能空白");
+      profile.display_name = name;
+    }
+    if (patch.unit !== undefined) profile.unit = patch.unit.trim();
+    if (patch.email !== undefined) {
+      const email = patch.email.trim().toLowerCase();
+      if (!email) throw new Error("EMAIL 不能空白");
+      const taken = store.profiles.some(
+        (p) => p.id !== userId && p.email.toLowerCase() === email,
+      );
+      if (taken) throw new Error("EMAIL 已被使用");
+      profile.email = email;
+    }
+    if (patch.personnel_role !== undefined) {
+      const nextRole = patch.personnel_role;
+      const wasAdmin = normalizePersonnelRole(profile) === "Admin";
+      if (wasAdmin && nextRole !== "Admin") {
+        const otherAdmins = store.profiles.filter(
+          (p) => p.id !== userId && normalizePersonnelRole(p) === "Admin",
+        );
+        if (otherAdmins.length === 0) throw new Error("至少要保留一位 Admin");
+      }
+      profile.personnel_role = nextRole;
+      profile.is_admin = nextRole === "Admin";
+    }
+    if (patch.custom !== undefined) {
+      profile.custom = { ...(profile.custom ?? {}), ...patch.custom };
+    }
+    save(store);
+    return normalizeProfile(profile);
+  },
+
+  /** Any signed-in user can reassign project memberships from Personnel. */
+  setPersonProjects(userId: string, projectIds: string[]): void {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const profile = store.profiles.find((p) => p.id === userId);
+    if (!profile) throw new Error("找不到這位人員");
+    const wanted = new Set(projectIds.filter((id) => store.projects.some((p) => p.id === id)));
+    const existing = store.members.filter((m) => m.user_id === userId);
+    for (const m of existing) {
+      if (!wanted.has(m.project_id)) {
+        if (m.role === "leader") {
+          const leaders = store.members.filter(
+            (x) => x.project_id === m.project_id && x.role === "leader",
+          );
+          if (leaders.length <= 1) {
+            throw new Error(`「${store.projects.find((p) => p.id === m.project_id)?.name ?? "專案"}」至少要有一位領導`);
+          }
+        }
+      }
+    }
+    store.members = store.members.filter((m) => m.user_id !== userId || wanted.has(m.project_id));
+    for (const projectId of wanted) {
+      const found = store.members.find((m) => m.project_id === projectId && m.user_id === userId);
+      if (!found) {
+        store.members.push({ project_id: projectId, user_id: userId, role: "member" });
+      }
+    }
+    save(store);
   },
 
   listProjects(): Project[] {
@@ -270,6 +365,8 @@ export const localApi = {
         unit: row.unit.trim(),
         email,
         is_admin: false,
+        personnel_role: "DE",
+        custom: {},
       });
       store.passwordHashes[id] = await sha256(`${username}:${password}`);
       creds.push({
@@ -408,6 +505,8 @@ export const localApi = {
           unit: row.unit.trim(),
           email,
           is_admin: false,
+          personnel_role: "DE",
+          custom: {},
         };
         store.profiles.push(profile);
         store.passwordHashes[id] = await sha256(`${username}:${password}`);

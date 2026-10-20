@@ -1,7 +1,17 @@
 import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { hasSupabaseConfig } from "./util";
-import type { AccountInput, InviteInput, Profile, Project, ProjectMember, Role, Task } from "./types";
+import type {
+  AccountInput,
+  InviteInput,
+  PersonnelColumn,
+  PersonnelRole,
+  Profile,
+  Project,
+  ProjectMember,
+  Role,
+  Task,
+} from "./types";
 
 export const isCloud = hasSupabaseConfig;
 
@@ -81,6 +91,35 @@ export const api = {
   async deletePerson(userId: string) {
     if (hasSupabaseConfig()) return cloudApi.deletePerson(userId);
     localApi.deletePerson(userId);
+  },
+  async listPersonnelColumns(): Promise<PersonnelColumn[]> {
+    if (hasSupabaseConfig()) return [];
+    return localApi.listPersonnelColumns();
+  },
+  async addPersonnelColumn(label: string): Promise<PersonnelColumn> {
+    if (hasSupabaseConfig()) throw new Error("自訂欄位目前僅支援本機模式");
+    return localApi.addPersonnelColumn(label);
+  },
+  async removePersonnelColumn(columnId: string) {
+    if (hasSupabaseConfig()) throw new Error("自訂欄位目前僅支援本機模式");
+    localApi.removePersonnelColumn(columnId);
+  },
+  async updateProfile(
+    userId: string,
+    patch: {
+      display_name?: string;
+      unit?: string;
+      email?: string;
+      personnel_role?: PersonnelRole;
+      custom?: Record<string, string>;
+    },
+  ): Promise<Profile> {
+    if (hasSupabaseConfig()) throw new Error("人員編輯目前僅支援本機模式");
+    return localApi.updateProfile(userId, patch);
+  },
+  async setPersonProjects(userId: string, projectIds: string[]) {
+    if (hasSupabaseConfig()) throw new Error("專案指派目前僅支援本機模式");
+    localApi.setPersonProjects(userId, projectIds);
   },
   async listTasks(projectId: string): Promise<Task[]> {
     if (hasSupabaseConfig()) return cloudApi.listTasks(projectId);
