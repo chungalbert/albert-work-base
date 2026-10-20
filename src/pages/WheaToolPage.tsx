@@ -27,7 +27,7 @@ export function WheaToolPage({ onBack }: { onBack?: () => void }) {
           <li>載入匯出的 System.evtx 進行 WHEA 硬體錯誤分析。</li>
         </ol>
         <p style={{ marginTop: "1rem" }}>
-          <a className="btn primary" href={SCRIPT_HREF} download={SCRIPT_NAME}>
+          <a className="btn btn-blue" href={SCRIPT_HREF} download={SCRIPT_NAME}>
             下載 {SCRIPT_NAME}
           </a>
         </p>
