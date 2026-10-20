@@ -2,6 +2,7 @@ import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { todayISO } from "./dates";
 import type {
   CredentialRow,
+  CreatePersonnelInput,
   InviteInput,
   AccountInput,
   PersonnelColumn,
@@ -226,6 +227,54 @@ export const localApi = {
     }
     if (patch.custom !== undefined) {
       profile.custom = { ...(profile.custom ?? {}), ...patch.custom };
+    }
+    save(store);
+    return normalizeProfile(profile);
+  },
+
+  async createPersonnelMember(input: CreatePersonnelInput): Promise<Profile> {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+
+    const display_name = input.display_name.trim();
+    if (!display_name) throw new Error("姓名不能空白");
+
+    let email = (input.email ?? "").trim().toLowerCase();
+    const requestedUsername = (input.username ?? "").trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+    if (!email) {
+      if (!requestedUsername) throw new Error("請填寫帳號或 EMAIL");
+      email = `${requestedUsername}@local`;
+    }
+
+    const takenEmails = store.profiles.some((p) => p.email.toLowerCase() === email);
+    if (takenEmails) throw new Error("EMAIL 已被使用");
+
+    const taken = new Set(store.profiles.map((p) => p.username.toLowerCase()));
+    let username = requestedUsername;
+    if (username) {
+      if (taken.has(username)) throw new Error("帳號已被使用");
+    } else {
+      username = usernameFromEmail(email, taken);
+    }
+
+    const id = crypto.randomUUID();
+    const personnel_role = input.personnel_role;
+    const profile: Profile = {
+      id,
+      username,
+      display_name,
+      unit: (input.phone ?? "").trim(),
+      email,
+      is_admin: personnel_role === "Admin",
+      personnel_role,
+      custom: {},
+    };
+    store.profiles.push(profile);
+    store.passwordHashes[id] = await sha256(`${username}:${DEFAULT_PASSWORD}`);
+
+    const projectIds = [...new Set((input.projectIds ?? []).filter((pid) => store.projects.some((p) => p.id === pid)))];
+    for (const projectId of projectIds) {
+      store.members.push({ project_id: projectId, user_id: id, role: "member" });
     }
     save(store);
     return normalizeProfile(profile);

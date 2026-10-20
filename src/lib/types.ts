@@ -94,6 +94,17 @@ export interface AccountInput {
   email: string;
 }
 
+export interface CreatePersonnelInput {
+  display_name: string;
+  /** Login id; if omitted, derived from email. */
+  username?: string;
+  /** If omitted and username is set, local mode uses username@local. */
+  email?: string;
+  phone?: string;
+  personnel_role: PersonnelRole;
+  projectIds?: string[];
+}
+
 export interface InviteInput extends AccountInput {
   role: Role;
   project_id: string;

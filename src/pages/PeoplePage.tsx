@@ -32,6 +32,16 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [columns, setColumns] = useState<PersonnelColumn[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [newColLabel, setNewColLabel] = useState("");
+  const [memberOpen, setMemberOpen] = useState(false);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [memberForm, setMemberForm] = useState({
+    display_name: "",
+    username: "",
+    email: "",
+    phone: "",
+    personnel_role: "DE" as PersonnelRole,
+    projectIds: [] as string[],
+  });
   const [projectPickerId, setProjectPickerId] = useState<string | null>(null);
 
   const refreshColumns = async () => {
@@ -105,6 +115,40 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     }
   };
 
+  const resetMemberForm = () => {
+    setMemberForm({
+      display_name: "",
+      username: "",
+      email: "",
+      phone: "",
+      personnel_role: "DE",
+      projectIds: [],
+    });
+  };
+
+  const onAddMember = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setMemberBusy(true);
+    try {
+      await api.createPersonnelMember({
+        display_name: memberForm.display_name,
+        username: memberForm.username || undefined,
+        email: memberForm.email,
+        phone: memberForm.phone,
+        personnel_role: memberForm.personnel_role,
+        projectIds: memberForm.projectIds,
+      });
+      resetMemberForm();
+      setMemberOpen(false);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Add member failed");
+    } finally {
+      setMemberBusy(false);
+    }
+  };
+
   const onRemoveColumn = async (columnId: string, label: string) => {
     const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
     if (!ok) return;
@@ -171,38 +215,181 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           <span className="personnel-bc-current">Personnel</span>
         </nav>
 
-        <div className="personnel-add-wrap">
+        <div className="personnel-toolbar-actions">
           <button
             type="button"
-            className="personnel-add-col"
-            aria-expanded={addOpen}
-            onClick={() => setAddOpen((v) => !v)}
+            className="personnel-add-col personnel-add-member"
+            onClick={() => {
+              setAddOpen(false);
+              setMemberOpen(true);
+            }}
           >
-            + ADD COLUMN
+            + ADD MEMBER
           </button>
-          {addOpen && (
-            <form className="personnel-add-popover" onSubmit={onAddColumn}>
-              <label>
-                Column name
-                <input
-                  value={newColLabel}
-                  onChange={(e) => setNewColLabel(e.target.value)}
-                  placeholder="e.g. Team"
-                  autoFocus
-                />
-              </label>
-              <div className="personnel-add-actions">
-                <button type="button" className="personnel-btn-ghost" onClick={() => setAddOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="personnel-btn-primary" disabled={!newColLabel.trim()}>
-                  Add
-                </button>
-              </div>
-            </form>
-          )}
+          <div className="personnel-add-wrap">
+            <button
+              type="button"
+              className="personnel-add-col"
+              aria-expanded={addOpen}
+              onClick={() => {
+                setMemberOpen(false);
+                setAddOpen((v) => !v);
+              }}
+            >
+              + ADD COLUMN
+            </button>
+            {addOpen && (
+              <form className="personnel-add-popover" onSubmit={onAddColumn}>
+                <label>
+                  Column name
+                  <input
+                    value={newColLabel}
+                    onChange={(e) => setNewColLabel(e.target.value)}
+                    placeholder="e.g. Team"
+                    autoFocus
+                  />
+                </label>
+                <div className="personnel-add-actions">
+                  <button type="button" className="personnel-btn-ghost" onClick={() => setAddOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="personnel-btn-primary" disabled={!newColLabel.trim()}>
+                    Add
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </header>
+
+      {memberOpen && (
+        <div className="personnel-modal-backdrop" role="presentation" onClick={() => !memberBusy && setMemberOpen(false)}>
+          <form
+            className="personnel-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="personnel-add-member-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={onAddMember}
+          >
+            <header className="personnel-modal-head">
+              <h2 id="personnel-add-member-title">新增 Member</h2>
+              <button
+                type="button"
+                className="personnel-modal-close"
+                aria-label="Close"
+                disabled={memberBusy}
+                onClick={() => setMemberOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="personnel-modal-body">
+              <label>
+                Name
+                <input
+                  value={memberForm.display_name}
+                  onChange={(e) => setMemberForm((f) => ({ ...f, display_name: e.target.value }))}
+                  placeholder="Display name"
+                  autoFocus
+                  required
+                />
+              </label>
+              <label>
+                Username
+                <input
+                  value={memberForm.username}
+                  onChange={(e) => setMemberForm((f) => ({ ...f, username: e.target.value }))}
+                  placeholder="Login id (optional if email set)"
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={memberForm.email}
+                  onChange={(e) => setMemberForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="email@example.com"
+                />
+              </label>
+              <label>
+                Phone
+                <input
+                  value={memberForm.phone}
+                  onChange={(e) => setMemberForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="Optional"
+                />
+              </label>
+              <label>
+                Role
+                <select
+                  className="personnel-select"
+                  value={memberForm.personnel_role}
+                  onChange={(e) =>
+                    setMemberForm((f) => ({ ...f, personnel_role: e.target.value as PersonnelRole }))
+                  }
+                >
+                  {PERSONNEL_ROLES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </label>
+              <fieldset className="personnel-modal-projects">
+                <legend>Projects</legend>
+                {projects.length === 0 ? (
+                  <p className="personnel-muted">No projects yet.</p>
+                ) : (
+                  projects.map((p) => {
+                    const checked = memberForm.projectIds.includes(p.id);
+                    return (
+                      <label key={p.id} className="personnel-check">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setMemberForm((f) => ({
+                              ...f,
+                              projectIds: checked
+                                ? f.projectIds.filter((id) => id !== p.id)
+                                : [...f.projectIds, p.id],
+                            }));
+                          }}
+                        />
+                        {p.name}
+                      </label>
+                    );
+                  })
+                )}
+              </fieldset>
+            </div>
+            <footer className="personnel-add-actions">
+              <button
+                type="button"
+                className="personnel-btn-ghost"
+                disabled={memberBusy}
+                onClick={() => {
+                  resetMemberForm();
+                  setMemberOpen(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="personnel-btn-primary"
+                disabled={
+                  memberBusy ||
+                  !memberForm.display_name.trim() ||
+                  (!memberForm.username.trim() && !memberForm.email.trim())
+                }
+              >
+                {memberBusy ? "Saving…" : "Save member"}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
 
       {error && <p className="personnel-error">{error}</p>}
 

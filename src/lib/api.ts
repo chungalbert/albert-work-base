@@ -4,6 +4,7 @@ import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
 import { hasSupabaseConfig } from "./util";
 import type {
   AccountInput,
+  CreatePersonnelInput,
   InviteInput,
   PersonnelColumn,
   PersonnelRole,
@@ -18,6 +19,29 @@ export const isCloud = hasSupabaseConfig;
 
 function withPersonnelOverlay(profile: Profile): Profile {
   return personnelUiStore.mergeProfile(profile);
+}
+
+function mergeProfilesWithExtras(profiles: Profile[]): Profile[] {
+  const byId = new Map(profiles.map((p) => [p.id, withPersonnelOverlay(p)]));
+  for (const extra of personnelUiStore.listExtraMembers()) {
+    if (!byId.has(extra.id) && ![...byId.values()].some((p) => p.email.toLowerCase() === extra.email.toLowerCase())) {
+      byId.set(extra.id, extra);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeMembersWithExtras(members: ProjectMember[]): ProjectMember[] {
+  const keys = new Set(members.map((m) => `${m.project_id}:${m.user_id}`));
+  const merged = [...members];
+  for (const row of personnelUiStore.listExtraMemberships()) {
+    const key = `${row.project_id}:${row.user_id}`;
+    if (!keys.has(key)) {
+      keys.add(key);
+      merged.push(row);
+    }
+  }
+  return merged;
 }
 
 export const api = {
@@ -43,11 +67,11 @@ export const api = {
   async listProfiles(): Promise<Profile[]> {
     if (hasSupabaseConfig()) {
       const profiles = await cloudApi.listProfiles();
-      return profiles.map(withPersonnelOverlay);
+      return mergeProfilesWithExtras(profiles);
     }
     await localApi.ensurePasswordScheme();
     importColumnsIfEmpty(localApi.listPersonnelColumns());
-    return localApi.listProfiles().map(withPersonnelOverlay);
+    return mergeProfilesWithExtras(localApi.listProfiles());
   },
   async listProjects(): Promise<Project[]> {
     if (hasSupabaseConfig()) return cloudApi.listProjects();
@@ -66,12 +90,18 @@ export const api = {
     localApi.deleteProject(id);
   },
   async listMembers(projectId: string): Promise<ProjectMember[]> {
-    if (hasSupabaseConfig()) return cloudApi.listMembers(projectId);
-    return localApi.listMembers(projectId);
+    if (hasSupabaseConfig()) {
+      return mergeMembersWithExtras(await cloudApi.listMembers(projectId)).filter(
+        (m) => m.project_id === projectId,
+      );
+    }
+    return mergeMembersWithExtras(localApi.listMembers(projectId)).filter(
+      (m) => m.project_id === projectId,
+    );
   },
   async listAllMembers(): Promise<ProjectMember[]> {
-    if (hasSupabaseConfig()) return cloudApi.listAllMembers();
-    return localApi.listAllMembers();
+    if (hasSupabaseConfig()) return mergeMembersWithExtras(await cloudApi.listAllMembers());
+    return mergeMembersWithExtras(localApi.listAllMembers());
   },
   async myRole(projectId: string): Promise<Role | null> {
     if (hasSupabaseConfig()) return cloudApi.myRole(projectId);
@@ -102,8 +132,79 @@ export const api = {
     return localApi.resetPassword(userId);
   },
   async deletePerson(userId: string) {
+    const extras = personnelUiStore.listExtraMembers();
+    if (extras.some((p) => p.id === userId)) {
+      personnelUiStore.removeExtraMember(userId);
+      return;
+    }
     if (hasSupabaseConfig()) return cloudApi.deletePerson(userId);
     localApi.deletePerson(userId);
+  },
+  async createPersonnelMember(input: CreatePersonnelInput): Promise<Profile> {
+    const display_name = input.display_name.trim();
+    if (!display_name) throw new Error("姓名不能空白");
+    const personnel_role = input.personnel_role;
+    const projectIds = [...new Set(input.projectIds ?? [])];
+    const phone = (input.phone ?? "").trim();
+    let email = (input.email ?? "").trim().toLowerCase();
+    const username = (input.username ?? "").trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+    if (!email && username) email = `${username}@local`;
+    if (!email) throw new Error("請填寫帳號或 EMAIL");
+
+    if (!hasSupabaseConfig()) {
+      const created = await localApi.createPersonnelMember({
+        display_name,
+        username: username || undefined,
+        email,
+        phone,
+        personnel_role,
+        projectIds,
+      });
+      return withPersonnelOverlay(created);
+    }
+
+    // Cloud: try invite edge function; on failure, persist as client-side extra member.
+    try {
+      const creds = await cloudApi.createAccounts([
+        { display_name, unit: phone, email },
+      ]);
+      const cred = creds[0];
+      const profiles = await cloudApi.listProfiles();
+      let profile =
+        profiles.find((p) => p.email.toLowerCase() === email) ??
+        (cred ? profiles.find((p) => p.username === cred.username) : undefined);
+      if (!profile) throw new Error("帳號已建立，但找不到人員資料");
+      profile = personnelUiStore.applyOverlay(profile.id, profile, {
+        display_name,
+        unit: phone,
+        email,
+        personnel_role,
+        projectIds,
+      });
+      if (projectIds.length > 0) {
+        await api.setPersonProjects(profile.id, projectIds);
+      }
+      return withPersonnelOverlay(profile);
+    } catch {
+      const id = crypto.randomUUID();
+      const login =
+        username ||
+        email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 24) ||
+        "user";
+      return personnelUiStore.addExtraMember(
+        {
+          id,
+          username: login,
+          display_name,
+          unit: phone,
+          email,
+          is_admin: personnel_role === "Admin",
+          personnel_role,
+          custom: {},
+        },
+        projectIds,
+      );
+    }
   },
   async listPersonnelColumns(): Promise<PersonnelColumn[]> {
     if (!hasSupabaseConfig()) {
@@ -128,6 +229,10 @@ export const api = {
       custom?: Record<string, string>;
     },
   ): Promise<Profile> {
+    const extra = personnelUiStore.listExtraMembers().find((p) => p.id === userId);
+    if (extra) {
+      return personnelUiStore.applyOverlay(userId, extra, patch);
+    }
     if (!hasSupabaseConfig()) {
       const updated = localApi.updateProfile(userId, patch);
       return withPersonnelOverlay(updated);
@@ -138,6 +243,10 @@ export const api = {
     return personnelUiStore.applyOverlay(userId, base, patch);
   },
   async setPersonProjects(userId: string, projectIds: string[]) {
+    if (personnelUiStore.listExtraMembers().some((p) => p.id === userId)) {
+      personnelUiStore.setExtraProjectIds(userId, projectIds);
+      return;
+    }
     if (!hasSupabaseConfig()) {
       localApi.setPersonProjects(userId, projectIds);
       return;
