@@ -1,5 +1,6 @@
 import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
+import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
 import { hasSupabaseConfig } from "./util";
 import type {
   AccountInput,
@@ -15,26 +16,38 @@ import type {
 
 export const isCloud = hasSupabaseConfig;
 
+function withPersonnelOverlay(profile: Profile): Profile {
+  return personnelUiStore.mergeProfile(profile);
+}
+
 export const api = {
   async signIn(identifier: string, password: string): Promise<Profile> {
-    if (hasSupabaseConfig()) return cloudApi.signIn(identifier, password);
+    if (hasSupabaseConfig()) return withPersonnelOverlay(await cloudApi.signIn(identifier, password));
     const profile = await localApi.signIn(identifier, password);
     ensureSampleIfEmpty();
-    return profile;
+    return withPersonnelOverlay(profile);
   },
   async signOut() {
     if (hasSupabaseConfig()) return cloudApi.signOut();
     localApi.signOut();
   },
   async currentUser(): Promise<Profile | null> {
-    if (hasSupabaseConfig()) return cloudApi.currentUser();
+    if (hasSupabaseConfig()) {
+      const profile = await cloudApi.currentUser();
+      return profile ? withPersonnelOverlay(profile) : null;
+    }
     await localApi.ensurePasswordScheme();
-    return localApi.currentUser();
+    const profile = localApi.currentUser();
+    return profile ? withPersonnelOverlay(profile) : null;
   },
   async listProfiles(): Promise<Profile[]> {
-    if (hasSupabaseConfig()) return cloudApi.listProfiles();
+    if (hasSupabaseConfig()) {
+      const profiles = await cloudApi.listProfiles();
+      return profiles.map(withPersonnelOverlay);
+    }
     await localApi.ensurePasswordScheme();
-    return localApi.listProfiles();
+    importColumnsIfEmpty(localApi.listPersonnelColumns());
+    return localApi.listProfiles().map(withPersonnelOverlay);
   },
   async listProjects(): Promise<Project[]> {
     if (hasSupabaseConfig()) return cloudApi.listProjects();
@@ -93,16 +106,17 @@ export const api = {
     localApi.deletePerson(userId);
   },
   async listPersonnelColumns(): Promise<PersonnelColumn[]> {
-    if (hasSupabaseConfig()) return [];
-    return localApi.listPersonnelColumns();
+    if (!hasSupabaseConfig()) {
+      importColumnsIfEmpty(localApi.listPersonnelColumns());
+    }
+    return personnelUiStore.listColumns();
   },
   async addPersonnelColumn(label: string): Promise<PersonnelColumn> {
-    if (hasSupabaseConfig()) throw new Error("自訂欄位目前僅支援本機模式");
-    return localApi.addPersonnelColumn(label);
+    // Client-side persistence for both local and Supabase (cloud) modes.
+    return personnelUiStore.addColumn(label);
   },
   async removePersonnelColumn(columnId: string) {
-    if (hasSupabaseConfig()) throw new Error("自訂欄位目前僅支援本機模式");
-    localApi.removePersonnelColumn(columnId);
+    personnelUiStore.removeColumn(columnId);
   },
   async updateProfile(
     userId: string,
@@ -114,12 +128,33 @@ export const api = {
       custom?: Record<string, string>;
     },
   ): Promise<Profile> {
-    if (hasSupabaseConfig()) throw new Error("人員編輯目前僅支援本機模式");
-    return localApi.updateProfile(userId, patch);
+    if (!hasSupabaseConfig()) {
+      const updated = localApi.updateProfile(userId, patch);
+      return withPersonnelOverlay(updated);
+    }
+    const profiles = await cloudApi.listProfiles();
+    const base = profiles.find((p) => p.id === userId);
+    if (!base) throw new Error("找不到這位人員");
+    return personnelUiStore.applyOverlay(userId, base, patch);
   },
   async setPersonProjects(userId: string, projectIds: string[]) {
-    if (hasSupabaseConfig()) throw new Error("專案指派目前僅支援本機模式");
-    localApi.setPersonProjects(userId, projectIds);
+    if (!hasSupabaseConfig()) {
+      localApi.setPersonProjects(userId, projectIds);
+      return;
+    }
+    // Cloud: sync memberships via existing member APIs (member role by default).
+    const current = (await cloudApi.listAllMembers()).filter((m) => m.user_id === userId);
+    const wanted = new Set(projectIds);
+    for (const m of current) {
+      if (!wanted.has(m.project_id)) {
+        await cloudApi.removeProjectMember(m.project_id, userId);
+      }
+    }
+    for (const projectId of wanted) {
+      if (!current.some((m) => m.project_id === projectId)) {
+        await cloudApi.addProjectMember(projectId, userId, "member");
+      }
+    }
   },
   async listTasks(projectId: string): Promise<Task[]> {
     if (hasSupabaseConfig()) return cloudApi.listTasks(projectId);
