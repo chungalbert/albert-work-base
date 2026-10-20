@@ -954,6 +954,12 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 }
 
 .gantt-box { overflow-x: auto; }
+
+/* Invisible spacer row so frappe-gantt can render when there are no real tasks. */
+.gantt-box .gantt .bar-wrapper.axis-anchor {
+  display: none;
+}
+
 .gantt-box .gantt .grid-header,
 .gantt-box .gantt .grid-row,
 .gantt-box .gantt .grid-row:nth-child(even) { fill: #ffffff; }
