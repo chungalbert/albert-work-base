@@ -125,7 +125,7 @@ export function OtpVaultPage({
             Dashboard
           </button>
           <span className="otp-bc-sep" aria-hidden="true">›</span>
-          <span className="otp-bc-current">OTP</span>
+          <span className="otp-bc-current">OTP Vault</span>
         </nav>
         <div className="otp-toolbar-actions">
           <button type="button" className="otp-add-btn" onClick={() => { setShowAdd(true); setError(""); }}>
