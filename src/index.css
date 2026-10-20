@@ -954,14 +954,6 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 }
 
 .gantt-box { overflow-x: auto; }
-.gantt-box .gantt-container {
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.gantt-box .gantt-container > svg.gantt {
-  overflow: hidden;
-  max-width: 100%;
-}
 .gantt-box .gantt .grid-header,
 .gantt-box .gantt .grid-row,
 .gantt-box .gantt .grid-row:nth-child(even) { fill: #ffffff; }
