@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsIssuesPage } from "./pages/ProjectsIssuesPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { GuidesPage } from "./pages/GuidesPage";
+import { NotesPage } from "./pages/NotesPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -33,6 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "FEATURE",
     items: [
       { id: "guides", label: "教學", icon: "book" },
+      { id: "notes", label: "Note", icon: "note" },
     ],
   },
   {
@@ -87,6 +89,16 @@ function NavIcon({ name }: { name: string }) {
           <path d="M6 3v16" />
         </svg>
       );
+    case "note":
+      return (
+        <svg {...common}>
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+          <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+          <path d="M10 9H8" />
+          <path d="M16 13H8" />
+          <path d="M16 17H8" />
+        </svg>
+      );
     case "users":
       return (
         <svg {...common}>
@@ -125,14 +137,17 @@ function Shell() {
   const initial = (user?.display_name || user?.username || "?").trim().charAt(0).toUpperCase();
   const isProjectIssue = currentView === "projects";
   const isPersonnel = currentView === "people";
-  const hideChrome = isProjectIssue || isPersonnel;
+  const isNotes = currentView === "notes";
+  const hideChrome = isProjectIssue || isPersonnel || isNotes;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
-    <div className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}`}>
+    <div
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}`}
+    >
       <aside className="sidebar" aria-label="KSSW navigation">
         <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
           <span className="sidebar-brand-name">KSSW</span>
@@ -230,7 +245,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}`}
         >
           {!hideChrome && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
@@ -246,6 +261,9 @@ function Shell() {
             </Suspense>
           )}
           {currentView === "guides" && <GuidesPage />}
+          {currentView === "notes" && (
+            <NotesPage onGoDashboard={() => setView("home")} />
+          )}
         </main>
       </div>
 
