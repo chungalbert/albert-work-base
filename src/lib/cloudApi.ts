@@ -4,6 +4,9 @@ import type {
   AccountInput,
   CredentialRow,
   InviteInput,
+  NoteColor,
+  NoteItem,
+  OtpVaultEntry,
   Profile,
   Project,
   ProjectMember,
@@ -260,5 +263,152 @@ export const cloudApi = {
     const { data, error } = await sb().from("tasks").select("*");
     if (error) throw error;
     return (data as Task[]).map(normalizeTask);
+  },
+
+  async listNotes(): Promise<NoteItem[]> {
+    const { data, error } = await sb().from("shared_notes").select("*").order("updated_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: row.id as string,
+      title: String(row.title ?? ""),
+      body: String(row.body ?? ""),
+      color: (row.color as NoteColor) || "blue",
+      pinned: Boolean(row.pinned),
+      url: (row.url as string | null)?.trim() || undefined,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+    }));
+  },
+
+  async createNote(input: {
+    title: string;
+    body: string;
+    color: NoteColor;
+    url?: string;
+  }): Promise<NoteItem> {
+    const me = await cloudApi.currentUser();
+    const { data, error } = await sb()
+      .from("shared_notes")
+      .insert({
+        title: input.title.trim(),
+        body: input.body.trim(),
+        color: input.color,
+        url: input.url?.trim() || null,
+        pinned: false,
+        created_by: me?.id ?? null,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id as string,
+      title: String(data.title ?? ""),
+      body: String(data.body ?? ""),
+      color: (data.color as NoteColor) || "blue",
+      pinned: Boolean(data.pinned),
+      url: (data.url as string | null)?.trim() || undefined,
+      created_at: data.created_at as string,
+      updated_at: data.updated_at as string,
+    };
+  },
+
+  async updateNote(
+    id: string,
+    patch: Partial<{ title: string; body: string; color: NoteColor; url: string; pinned: boolean }>,
+  ): Promise<NoteItem> {
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.title !== undefined) row.title = patch.title.trim();
+    if (patch.body !== undefined) row.body = patch.body.trim();
+    if (patch.color !== undefined) row.color = patch.color;
+    if (patch.url !== undefined) row.url = patch.url.trim() || null;
+    if (patch.pinned !== undefined) row.pinned = patch.pinned;
+    const { data, error } = await sb().from("shared_notes").update(row).eq("id", id).select().single();
+    if (error) throw error;
+    return {
+      id: data.id as string,
+      title: String(data.title ?? ""),
+      body: String(data.body ?? ""),
+      color: (data.color as NoteColor) || "blue",
+      pinned: Boolean(data.pinned),
+      url: (data.url as string | null)?.trim() || undefined,
+      created_at: data.created_at as string,
+      updated_at: data.updated_at as string,
+    };
+  },
+
+  async removeNote(id: string) {
+    const { error } = await sb().from("shared_notes").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  async listOtpEntries(): Promise<OtpVaultEntry[]> {
+    const { data, error } = await sb().from("otp_vault_entries").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: String(row.id),
+      label: String(row.label ?? ""),
+      issuer: String(row.issuer ?? ""),
+      account: String(row.account ?? ""),
+      secret: String(row.secret ?? ""),
+      qr_text: (row.qr_text as string | null)?.trim() || undefined,
+      thumb: (row.thumb as string | null)?.trim() || undefined,
+      access_password: (row.access_password as string | null)?.trim() || undefined,
+      owner_id: row.created_by ? String(row.created_by) : undefined,
+      created_at: Number(row.created_at) || Math.floor(Date.now() / 1000),
+    }));
+  },
+
+  async addOtpEntry(input: {
+    label?: string;
+    issuer?: string;
+    account?: string;
+    secret: string;
+    qr_text?: string;
+    thumb?: string;
+    access_password?: string;
+    owner_id?: string;
+  }): Promise<OtpVaultEntry> {
+    const me = await cloudApi.currentUser();
+    const issuer = (input.issuer ?? "").trim();
+    const account = (input.account ?? "").trim();
+    const label =
+      (input.label ?? "").trim() ||
+      (issuer && account ? `${issuer} · ${account}` : issuer || account || "OTP entry");
+    const id = `otp_${crypto.randomUUID()}`;
+    const created_at = Math.floor(Date.now() / 1000);
+    const { data, error } = await sb()
+      .from("otp_vault_entries")
+      .insert({
+        id,
+        label,
+        issuer,
+        account,
+        secret: input.secret.replace(/\s+/g, "").toUpperCase(),
+        qr_text: input.qr_text?.trim() || null,
+        thumb: input.thumb?.trim() || null,
+        access_password: input.access_password?.trim() || null,
+        created_by: me?.id ?? null,
+        created_at,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: String(data.id),
+      label: String(data.label ?? ""),
+      issuer: String(data.issuer ?? ""),
+      account: String(data.account ?? ""),
+      secret: String(data.secret ?? ""),
+      qr_text: (data.qr_text as string | null)?.trim() || undefined,
+      thumb: (data.thumb as string | null)?.trim() || undefined,
+      access_password: (data.access_password as string | null)?.trim() || undefined,
+      owner_id: data.created_by ? String(data.created_by) : input.owner_id,
+      created_at: Number(data.created_at) || created_at,
+    };
+  },
+
+  async removeOtpEntry(id: string) {
+    const { error } = await sb().from("otp_vault_entries").delete().eq("id", id);
+    if (error) throw error;
   },
 };
