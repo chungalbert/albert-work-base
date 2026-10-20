@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SavingIndicator } from "../components/SavingIndicator";
 import { api } from "../lib/api";
 import {
   isTaskOpen,
@@ -10,12 +11,8 @@ import {
 } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
+import { useSaveStatus } from "../lib/useSaveStatus";
 import { DEFAULT_PASSWORD } from "../lib/util";
-
-type SaveStatus =
-  | { kind: "idle" }
-  | { kind: "saving" }
-  | { kind: "saved"; seconds: number };
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -31,10 +28,6 @@ function avatarTone(name: string): string {
   return tones[hash];
 }
 
-function formatSaveSeconds(ms: number): number {
-  return Math.max(0, Math.round(ms / 10) / 100);
-}
-
 export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const { user } = useAuth();
   const { profiles, allMembers, allTasks, projects, reload } = useStore();
@@ -46,8 +39,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [newColLabel, setNewColLabel] = useState("");
   const [memberOpen, setMemberOpen] = useState(false);
   const [memberBusy, setMemberBusy] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
-  const saveHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { saveStatus, runSave } = useSaveStatus();
   const [memberForm, setMemberForm] = useState({
     display_name: "",
     username: "",
@@ -72,37 +64,6 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       setMemberBusy(false);
     }
   }, [isAdmin]);
-
-  useEffect(() => {
-    return () => {
-      if (saveHideTimer.current) clearTimeout(saveHideTimer.current);
-    };
-  }, []);
-
-  const runSave = async <T,>(work: () => Promise<T>): Promise<T | undefined> => {
-    if (saveHideTimer.current) {
-      clearTimeout(saveHideTimer.current);
-      saveHideTimer.current = null;
-    }
-    setSaveStatus({ kind: "saving" });
-    const started = performance.now();
-    try {
-      // Optional delay for screenshot / local demos (localStorage AWB_SLOW_SAVE=ms).
-      const slow = Number(localStorage.getItem("AWB_SLOW_SAVE") || "0");
-      if (slow > 0) await new Promise((r) => setTimeout(r, slow));
-      const result = await work();
-      const seconds = formatSaveSeconds(performance.now() - started);
-      setSaveStatus({ kind: "saved", seconds });
-      saveHideTimer.current = setTimeout(() => {
-        setSaveStatus({ kind: "idle" });
-        saveHideTimer.current = null;
-      }, 1000);
-      return result;
-    } catch (err) {
-      setSaveStatus({ kind: "idle" });
-      throw err;
-    }
-  };
 
   const rows = useMemo(() => {
     return profiles.map((profile) => {
@@ -287,22 +248,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         </nav>
 
         <div className="personnel-toolbar-actions">
-          {saveStatus.kind !== "idle" && (
-            <div
-              className={`personnel-save-status${saveStatus.kind === "saving" ? " is-saving" : " is-saved"}`}
-              role="status"
-              aria-live="polite"
-            >
-              {saveStatus.kind === "saving" ? (
-                <>
-                  <span className="personnel-save-spinner" aria-hidden="true" />
-                  <span>Saving</span>
-                </>
-              ) : (
-                <span>Saved {saveStatus.seconds.toFixed(2)}s</span>
-              )}
-            </div>
-          )}
+          <SavingIndicator status={saveStatus} />
           {isAdmin && (
             <button
               type="button"

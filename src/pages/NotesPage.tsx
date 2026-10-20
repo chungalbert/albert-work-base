@@ -1,7 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { SavingIndicator } from "../components/SavingIndicator";
 import { SharedStoreBanner } from "../components/SharedStoreBanner";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { firstUrlInText, notesStore } from "../lib/notesStore";
 import { NOTE_COLORS, type NoteColor, type NoteItem } from "../lib/types";
+import { useSaveStatus } from "../lib/useSaveStatus";
 
 const COLOR_LABEL: Record<NoteColor, string> = {
   blue: "Blue",
@@ -24,6 +27,7 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [copiedId, setCopiedId] = useState("");
+  const { saveStatus, runSave } = useSaveStatus();
 
   const refresh = async () => {
     setNotes(await notesStore.list());
@@ -65,15 +69,17 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     event.preventDefault();
     setError("");
     try {
-      if (editingId) {
-        await notesStore.update(editingId, form);
-      } else {
-        await notesStore.create(form);
-      }
-      setEditorOpen(false);
-      setEditingId(null);
-      setForm(emptyForm());
-      await refresh();
+      await runSave(async () => {
+        if (editingId) {
+          await notesStore.update(editingId, form);
+        } else {
+          await notesStore.create(form);
+        }
+        setEditorOpen(false);
+        setEditingId(null);
+        setForm(emptyForm());
+        await refresh();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     }
@@ -82,23 +88,40 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const onDelete = async (note: NoteItem) => {
     const ok = window.confirm(`Delete note “${note.title}”?`);
     if (!ok) return;
-    await notesStore.remove(note.id);
-    await refresh();
+    setError("");
+    try {
+      await runSave(async () => {
+        await notesStore.remove(note.id);
+        await refresh();
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
   };
 
   const onPin = async (id: string) => {
-    await notesStore.togglePin(id);
-    await refresh();
+    setError("");
+    try {
+      await runSave(async () => {
+        await notesStore.togglePin(id);
+        await refresh();
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pin failed");
+    }
   };
 
-  const onCopy = async (note: NoteItem) => {
+  const onCopy = async (note: NoteItem, event?: MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
     const text = `${note.title}\n\n${note.body}${note.url ? `\n\n${note.url}` : ""}`.trim();
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
+      setError("");
       setCopiedId(note.id);
-      window.setTimeout(() => setCopiedId((cur) => (cur === note.id ? "" : cur)), 1200);
+      window.setTimeout(() => setCopiedId((cur) => (cur === note.id ? "" : cur)), 1800);
     } catch {
-      setError("Clipboard copy failed");
+      setError("Clipboard copy failed — 無法複製到剪貼簿");
     }
   };
 
@@ -142,6 +165,7 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         </div>
 
         <div className="note-actions">
+          <SavingIndicator status={saveStatus} />
           <button type="button" className="note-add-btn" onClick={openCreate}>
             + ADD
           </button>
@@ -149,6 +173,7 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       </header>
 
       {error && <p className="note-error">{error}</p>}
+      {copiedId && <p className="note-toast" role="status">已複製到剪貼簿</p>}
 
       <SharedStoreBanner onMigrated={() => void refresh()} />
 
@@ -167,22 +192,30 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                   <div className="note-card-tools">
                     <button
                       type="button"
-                      className="note-icon-btn"
-                      title={copiedId === note.id ? "Copied" : "Copy"}
-                      aria-label="Copy note"
-                      onClick={() => void onCopy(note)}
+                      className={`note-icon-btn${copiedId === note.id ? " copied" : ""}`}
+                      title={copiedId === note.id ? "已複製" : "Copy"}
+                      aria-label={copiedId === note.id ? "已複製" : "Copy note"}
+                      onClick={(e) => void onCopy(note, e)}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
+                      {copiedId === note.id ? (
+                        <span className="note-copied-label">已複製</span>
+                      ) : (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
                     </button>
                     <button
                       type="button"
                       className={`note-icon-btn${note.pinned ? " on" : ""}`}
                       title={note.pinned ? "Unpin" : "Pin"}
                       aria-label={note.pinned ? "Unpin note" : "Pin note"}
-                      onClick={() => onPin(note.id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void onPin(note.id);
+                      }}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M12 17v5" />
@@ -200,7 +233,11 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                       title={hasLink ? "Open link" : "No link"}
                       aria-label="Open link"
                       disabled={!hasLink}
-                      onClick={() => onOpenLink(note)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onOpenLink(note);
+                      }}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="12" r="10" />
@@ -213,7 +250,11 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                       className="note-icon-btn danger"
                       title="Delete"
                       aria-label="Delete note"
-                      onClick={() => onDelete(note)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void onDelete(note);
+                      }}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M3 6h18" />
@@ -227,7 +268,11 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                     className="note-icon-btn"
                     title="Edit"
                     aria-label="Edit note"
-                    onClick={() => openEdit(note)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openEdit(note);
+                    }}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 20h9" />

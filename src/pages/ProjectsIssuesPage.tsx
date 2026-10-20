@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SavingIndicator } from "../components/SavingIndicator";
 import {
   addAnalyzedNote,
   analyzedNoteCredit,
@@ -21,6 +22,7 @@ import {
 } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
+import { useSaveStatus } from "../lib/useSaveStatus";
 
 type StatusFilter = "all" | TaskStatus;
 
@@ -124,6 +126,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const { saveStatus, runSave } = useSaveStatus();
 
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState(user?.id ?? "");
@@ -178,8 +181,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setError("");
     setBusyId(projectId);
     try {
-      await api.updateProject(projectId, patch);
-      await reload();
+      await runSave(async () => {
+        await api.updateProject(projectId, patch);
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -191,10 +196,12 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     event.preventDefault();
     setError("");
     try {
-      await api.addProjectColumn(newColLabel);
-      setNewColLabel("");
-      setAddColOpen(false);
-      await refreshProjectColumns();
+      await runSave(async () => {
+        await api.addProjectColumn(newColLabel);
+        setNewColLabel("");
+        setAddColOpen(false);
+        await refreshProjectColumns();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add column failed");
     }
@@ -205,9 +212,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     if (!ok) return;
     setError("");
     try {
-      await api.removeProjectColumn(columnId);
-      await refreshProjectColumns();
-      await reload();
+      await runSave(async () => {
+        await api.removeProjectColumn(columnId);
+        await refreshProjectColumns();
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Remove column failed");
     }
@@ -265,13 +274,15 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     event.preventDefault();
     setError("");
     try {
-      const created = await api.createProject(name, description);
-      setName("");
-      setDescription("");
-      setShowCreate(false);
-      setProjectId(created.id);
-      await reload();
-      setMode("detail");
+      await runSave(async () => {
+        const created = await api.createProject(name, description);
+        setName("");
+        setDescription("");
+        setShowCreate(false);
+        setProjectId(created.id);
+        await reload();
+        setMode("detail");
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     }
@@ -283,9 +294,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setBusyId(id);
     setError("");
     try {
-      await api.deleteProject(id);
-      if (mode === "detail" && projectId === id) backToList();
-      await reload();
+      await runSave(async () => {
+        await api.deleteProject(id);
+        if (mode === "detail" && projectId === id) backToList();
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -298,29 +311,38 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     if (!project || !user) return;
     setError("");
     try {
-      await api.createTask({
-        project_id: project.id,
-        title: title.trim(),
-        assignee_id: assignee || null,
-        start_date: start,
-        due_date: due < start ? start : due,
-        status: newStatus,
-        note: "",
-        ...syncAnalyzedFields(analyzed.trim() ? [makeAnalyzedNote(analyzed, user.id)] : []),
+      await runSave(async () => {
+        await api.createTask({
+          project_id: project.id,
+          title: title.trim(),
+          assignee_id: assignee || null,
+          start_date: start,
+          due_date: due < start ? start : due,
+          status: newStatus,
+          note: "",
+          ...syncAnalyzedFields(analyzed.trim() ? [makeAnalyzedNote(analyzed, user.id)] : []),
+        });
+        setTitle("");
+        setAnalyzed("");
+        setNewStatus("opening");
+        setShowNewIssue(false);
+        await reload();
       });
-      setTitle("");
-      setAnalyzed("");
-      setNewStatus("opening");
-      setShowNewIssue(false);
-      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     }
   };
 
   const patchTask = async (id: string, next: Parameters<typeof api.updateTask>[1]) => {
-    await api.updateTask(id, next);
-    await reload();
+    setError("");
+    try {
+      await runSave(async () => {
+        await api.updateTask(id, next);
+        await reload();
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    }
   };
 
   const canManage = Boolean(project && (user?.is_admin || role === "leader"));
@@ -366,6 +388,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         </div>
 
         <div className="pi-actions">
+          <SavingIndicator status={saveStatus} />
           {mode === "list" && (
             <div className="pi-add-col-wrap">
               <button
