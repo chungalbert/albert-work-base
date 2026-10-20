@@ -328,6 +328,15 @@ export const localApi = {
       description: description.trim(),
       created_by: store.sessionUserId,
       created_at: new Date().toISOString(),
+      lenovo_name: "",
+      bios_id: "",
+      platform: "",
+      dis: "",
+      ss_date: "",
+      eol_date: "",
+      security_update: "",
+      talent_policy: "",
+      custom: {},
     };
     store.projects.push(project);
     store.members.push({
@@ -335,6 +344,51 @@ export const localApi = {
       user_id: store.sessionUserId,
       role: "leader",
     });
+    save(store);
+    return project;
+  },
+
+  updateProject(
+    projectId: string,
+    patch: {
+      name?: string;
+      description?: string;
+      lenovo_name?: string;
+      bios_id?: string;
+      platform?: string;
+      dis?: string;
+      ss_date?: string;
+      eol_date?: string;
+      security_update?: string;
+      talent_policy?: string;
+      custom?: Record<string, string>;
+    },
+  ): Project {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const project = store.projects.find((p) => p.id === projectId);
+    if (!project) throw new Error("找不到專案");
+    if (localApi.myRole(projectId) !== "leader") {
+      throw new Error("只有專案領導或管理員可以編輯專案欄位");
+    }
+
+    if (patch.name !== undefined) {
+      const name = patch.name.trim();
+      if (!name) throw new Error("專案名稱不能空白");
+      project.name = name;
+    }
+    if (patch.description !== undefined) project.description = patch.description.trim();
+    if (patch.lenovo_name !== undefined) project.lenovo_name = patch.lenovo_name.trim();
+    if (patch.bios_id !== undefined) project.bios_id = patch.bios_id.trim();
+    if (patch.platform !== undefined) project.platform = patch.platform.trim();
+    if (patch.dis !== undefined) project.dis = patch.dis.trim();
+    if (patch.ss_date !== undefined) project.ss_date = patch.ss_date.trim();
+    if (patch.eol_date !== undefined) project.eol_date = patch.eol_date.trim();
+    if (patch.security_update !== undefined) project.security_update = patch.security_update.trim();
+    if (patch.talent_policy !== undefined) project.talent_policy = patch.talent_policy.trim();
+    if (patch.custom !== undefined) {
+      project.custom = { ...(project.custom ?? {}), ...patch.custom };
+    }
     save(store);
     return project;
   },
