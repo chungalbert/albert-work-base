@@ -15,8 +15,19 @@ import { useAuth } from "../context/AuthContext";
 
 type GanttChart = InstanceType<typeof Gantt> & {
   dates?: Date[];
+  gantt_start?: Date;
+  gantt_end?: Date;
   options?: { column_width?: number };
+  setup_gantt_dates?: () => void;
+  change_view_mode: (mode?: string) => void;
 };
+
+/** Weeks of padding around the selected week so empty weeks still have columns to scroll to. */
+const SELECTED_NEIGHBOR_WEEKS = 8;
+/** Extra months around tasks so the axis still feels full (frappe’s usual padding). */
+const TASK_PAD_DAYS = 30;
+
+const AXIS_ANCHOR_ID = "__axis_anchor__";
 
 /** Label each Week column as WW##; highlight the selected week. */
 function labelWeeks(root: HTMLElement, gantt: GanttChart, selectedWW: string) {
@@ -30,7 +41,42 @@ function labelWeeks(root: HTMLElement, gantt: GanttChart, selectedWW: string) {
   });
 }
 
-/** Scroll so the selected week column is near the left/center of the viewport. */
+/**
+ * Axis = union of (task span ± pad) and (selected week ± neighbors).
+ * Always includes the navigated week so ‹ › moves the chart even with no tasks there.
+ */
+function axisBounds(
+  weekStart: string,
+  tasks: Array<{ start_date: string; due_date: string }>,
+): { start: string; end: string } {
+  let start = addDaysISO(weekStart, -SELECTED_NEIGHBOR_WEEKS * 7);
+  let end = addDaysISO(weekStart, (SELECTED_NEIGHBOR_WEEKS + 1) * 7);
+
+  for (const task of tasks) {
+    const taskStart = addDaysISO(task.start_date, -TASK_PAD_DAYS);
+    const taskEnd = addDaysISO(task.due_date, TASK_PAD_DAYS + 1);
+    if (taskStart < start) start = taskStart;
+    if (taskEnd > end) end = taskEnd;
+  }
+
+  return {
+    start: startOfWeekMonday(start),
+    end: startOfWeekMonday(end) === end ? end : addDaysISO(startOfWeekMonday(end), 7),
+  };
+}
+
+/** Force frappe timeline to the union axis (headers + bar origin stay in sync). */
+function applyAxisBounds(gantt: GanttChart, startIso: string, endIso: string) {
+  const start = parseISODate(startIso);
+  const end = parseISODate(endIso);
+  gantt.setup_gantt_dates = function setup_gantt_dates(this: GanttChart) {
+    this.gantt_start = new Date(start.getTime());
+    this.gantt_end = new Date(end.getTime());
+  };
+  gantt.change_view_mode("Week");
+}
+
+/** Scroll so the selected week column is centered in the viewport. */
 function scrollToWeek(root: HTMLElement, gantt: GanttChart, weekStart: string) {
   const parent = (root.querySelector(".gantt-container") as HTMLElement | null) ?? root;
   const dates = gantt.dates ?? [];
@@ -42,7 +88,6 @@ function scrollToWeek(root: HTMLElement, gantt: GanttChart, weekStart: string) {
     index = dates.findIndex((date) => Math.abs(date.getTime() - target) < 86400000);
   }
   if (index < 0) {
-    // Selected week outside task-driven axis — scroll to nearest column.
     let best = 0;
     let bestDist = Infinity;
     dates.forEach((date, i) => {
@@ -70,12 +115,21 @@ export function GanttPage() {
   const selectedWW = formatWW(weekStart);
   const isCurrentWeek = weekStart === startOfWeekMonday();
 
-  // Full task-driven timeline (frappe ±1 month padding). No week-window filter/clamp.
+  // Rebuild when tasks or selected week change so the axis always covers the navigated week.
   useEffect(() => {
     if (!host.current) return;
     host.current.innerHTML = "";
     chart.current = null;
-    const rows = tasks.map((task) => ({
+
+    const bounds = axisBounds(weekStart, tasks);
+    const rows: Array<{
+      id: string;
+      name: string;
+      start: string;
+      end: string;
+      progress: number;
+      custom_class: string;
+    }> = tasks.map((task) => ({
       id: task.id,
       name: isAll ? `${projectName(task.project_id)} · ${task.title}` : task.title,
       start: task.start_date,
@@ -83,10 +137,23 @@ export function GanttPage() {
       progress: 100,
       custom_class: task.status,
     }));
-    if (rows.length === 0) return;
+
+    // frappe-gantt needs ≥1 task to init; invisible anchor keeps empty-week navigation working.
+    if (rows.length === 0) {
+      rows.push({
+        id: AXIS_ANCHOR_ID,
+        name: "\u00a0",
+        start: bounds.start,
+        end: addDaysISO(bounds.start, 6),
+        progress: 0,
+        custom_class: "axis-anchor",
+      });
+    }
+
     const next = new Gantt(host.current, rows, {
       view_mode: "Week",
       on_date_change: (task: { id: string }, start: Date, end: Date) => {
+        if (task.id === AXIS_ANCHOR_ID) return;
         const current = tasks.find((t) => t.id === task.id);
         const canEdit = Boolean(current && (canLeadProject(current.project_id) || current.assignee_id === user?.id));
         if (!canEdit) {
@@ -101,17 +168,12 @@ export function GanttPage() {
           .then(reload);
       },
     }) as GanttChart;
-    chart.current = next;
-    labelWeeks(host.current, next, formatWW(weekStart));
-    scrollToWeek(host.current, next, weekStart);
-  }, [tasks, user, reload, isAll, projectName, canLeadProject]);
 
-  // Week nav: highlight + scroll only — do not rebuild or shrink the axis.
-  useEffect(() => {
-    if (!host.current || !chart.current) return;
-    labelWeeks(host.current, chart.current, selectedWW);
-    scrollToWeek(host.current, chart.current, weekStart);
-  }, [weekStart, selectedWW]);
+    applyAxisBounds(next, bounds.start, bounds.end);
+    labelWeeks(host.current, next, selectedWW);
+    scrollToWeek(host.current, next, weekStart);
+    chart.current = next;
+  }, [tasks, user, reload, isAll, projectName, canLeadProject, weekStart, selectedWW]);
 
   return (
     <section className="schedule-page">
@@ -154,19 +216,20 @@ export function GanttPage() {
           </button>
         </div>
       </div>
-      {tasks.length === 0 ? (
-        <p className="hint">{isAll ? "還沒有任務。" : "這個專案還沒有任務。"}</p>
-      ) : (
-        <div className="gantt-box">
-          <div ref={host} />
-          <ul className="gantt-legend" aria-label="狀態顏色">
-            <li><span className="gantt-swatch opening" /> Opening</li>
-            <li><span className="gantt-swatch working" /> Working</li>
-            <li><span className="gantt-swatch closing" /> Closing</li>
-            <li><span className="gantt-swatch verify" /> Verify</li>
-          </ul>
-        </div>
-      )}
+      <div className="gantt-box">
+        {tasks.length === 0 && (
+          <p className="hint" style={{ marginBottom: 8 }}>
+            {isAll ? "還沒有任務；仍可用 ‹ › 移動週次軸。" : "這個專案還沒有任務；仍可用 ‹ › 移動週次軸。"}
+          </p>
+        )}
+        <div ref={host} />
+        <ul className="gantt-legend" aria-label="狀態顏色">
+          <li><span className="gantt-swatch opening" /> Opening</li>
+          <li><span className="gantt-swatch working" /> Working</li>
+          <li><span className="gantt-swatch closing" /> Closing</li>
+          <li><span className="gantt-swatch verify" /> Verify</li>
+        </ul>
+      </div>
     </section>
   );
 }
