@@ -1,4 +1,6 @@
 -- Shared sticky notes + OTP vault for all authenticated members (no owner-only list filter).
+-- Apply this migration on the live Supabase project after deploying #33+ Note/OTP cloud paths.
+-- Until applied, the app falls back to org localStorage (`awb-store-v1`) for Note/OTP.
 
 create table if not exists public.shared_notes (
   id uuid primary key default gen_random_uuid(),
@@ -59,3 +61,6 @@ create policy otp_vault_update on public.otp_vault_entries
 drop policy if exists otp_vault_delete on public.otp_vault_entries;
 create policy otp_vault_delete on public.otp_vault_entries
   for delete to authenticated using (true);
+
+grant select, insert, update, delete on table public.shared_notes to authenticated;
+grant select, insert, update, delete on table public.otp_vault_entries to authenticated;

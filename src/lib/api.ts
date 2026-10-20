@@ -23,6 +23,51 @@ import {
 
 export const isCloud = hasSupabaseConfig;
 
+/**
+ * When Supabase is configured but shared_notes / otp_vault_entries are missing
+ * (migration not applied), stick to the org local store for the rest of the session
+ * so Note/OTP saves still succeed for authenticated users.
+ */
+let sharedCloudUnavailable = false;
+
+function isSharedStoreUnavailableError(err: unknown): boolean {
+  const msg = (
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message?: unknown }).message ?? "")
+      : err instanceof Error
+        ? err.message
+        : String(err ?? "")
+  ).toLowerCase();
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    msg.includes("could not find the table") ||
+    msg.includes("does not exist") ||
+    msg.includes("schema cache") ||
+    msg.includes("shared_notes") && msg.includes("not find") ||
+    msg.includes("otp_vault_entries") && msg.includes("not find")
+  );
+}
+
+async function withSharedStoreFallback<T>(cloudCall: () => Promise<T>, localCall: () => T | Promise<T>): Promise<T> {
+  if (!hasSupabaseConfig() || sharedCloudUnavailable) {
+    return localCall();
+  }
+  try {
+    return await cloudCall();
+  } catch (err) {
+    if (!isSharedStoreUnavailableError(err)) throw err;
+    sharedCloudUnavailable = true;
+    console.warn("[awb] shared_notes/otp_vault_entries unavailable; using org local store", err);
+    return localCall();
+  }
+}
+
 function withPersonnelOverlay(profile: Profile): Profile {
   return personnelUiStore.mergeProfile(profile);
 }
@@ -326,29 +371,26 @@ export const api = {
 
   /** Shared notes — visible to all authenticated members. */
   async listNotes(): Promise<NoteItem[]> {
-    if (hasSupabaseConfig()) return cloudApi.listNotes();
-    return localApi.listNotes();
+    return withSharedStoreFallback(() => cloudApi.listNotes(), () => localApi.listNotes());
   },
   async createNote(input: { title: string; body: string; color: NoteColor; url?: string }): Promise<NoteItem> {
-    if (hasSupabaseConfig()) return cloudApi.createNote(input);
-    return localApi.createNote(input);
+    return withSharedStoreFallback(() => cloudApi.createNote(input), () => localApi.createNote(input));
   },
   async updateNote(
     id: string,
     patch: Partial<{ title: string; body: string; color: NoteColor; url: string; pinned: boolean }>,
   ): Promise<NoteItem> {
-    if (hasSupabaseConfig()) return cloudApi.updateNote(id, patch);
-    return localApi.updateNote(id, patch);
+    return withSharedStoreFallback(() => cloudApi.updateNote(id, patch), () => localApi.updateNote(id, patch));
   },
   async removeNote(id: string) {
-    if (hasSupabaseConfig()) return cloudApi.removeNote(id);
-    localApi.removeNote(id);
+    await withSharedStoreFallback(() => cloudApi.removeNote(id), () => {
+      localApi.removeNote(id);
+    });
   },
 
   /** Shared OTP vault — visible to all authenticated members. */
   async listOtpEntries(): Promise<OtpVaultEntry[]> {
-    if (hasSupabaseConfig()) return cloudApi.listOtpEntries();
-    return localApi.listOtpEntries();
+    return withSharedStoreFallback(() => cloudApi.listOtpEntries(), () => localApi.listOtpEntries());
   },
   async addOtpEntry(input: {
     label?: string;
@@ -360,11 +402,11 @@ export const api = {
     access_password?: string;
     owner_id?: string;
   }): Promise<OtpVaultEntry> {
-    if (hasSupabaseConfig()) return cloudApi.addOtpEntry(input);
-    return localApi.addOtpEntry(input);
+    return withSharedStoreFallback(() => cloudApi.addOtpEntry(input), () => localApi.addOtpEntry(input));
   },
   async removeOtpEntry(id: string) {
-    if (hasSupabaseConfig()) return cloudApi.removeOtpEntry(id);
-    localApi.removeOtpEntry(id);
+    await withSharedStoreFallback(() => cloudApi.removeOtpEntry(id), () => {
+      localApi.removeOtpEntry(id);
+    });
   },
 };

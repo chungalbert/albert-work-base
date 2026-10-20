@@ -148,8 +148,16 @@ function load(): Store {
     const parsed = JSON.parse(raw) as Store;
     if (!parsed.profiles?.length) return emptyStore();
     parsed.profiles = parsed.profiles.map(normalizeProfile);
+    if (!Array.isArray(parsed.projects)) parsed.projects = [];
+    if (!Array.isArray(parsed.members)) parsed.members = [];
+    if (!Array.isArray(parsed.tasks)) parsed.tasks = [];
+    if (!parsed.passwordHashes || typeof parsed.passwordHashes !== "object") parsed.passwordHashes = {};
     if (!parsed.personnelColumns) parsed.personnelColumns = [];
-    if (migrateLegacyShared(parsed)) save(parsed);
+    // Migrate legacy keys before forcing empty arrays (migrate checks !Array.isArray).
+    const migrated = migrateLegacyShared(parsed);
+    if (!Array.isArray(parsed.notes)) parsed.notes = [];
+    if (!Array.isArray(parsed.otpEntries)) parsed.otpEntries = [];
+    if (migrated) save(parsed);
     return parsed;
   } catch {
     return emptyStore();
