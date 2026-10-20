@@ -2,17 +2,18 @@ import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
 import { hasSupabaseConfig } from "./util";
-import type {
-  AccountInput,
-  CreatePersonnelInput,
-  InviteInput,
-  PersonnelColumn,
-  PersonnelRole,
-  Profile,
-  Project,
-  ProjectMember,
-  Role,
-  Task,
+import {
+  normalizePersonnelRole,
+  type AccountInput,
+  type CreatePersonnelInput,
+  type InviteInput,
+  type PersonnelColumn,
+  type PersonnelRole,
+  type Profile,
+  type Project,
+  type ProjectMember,
+  type Role,
+  type Task,
 } from "./types";
 
 export const isCloud = hasSupabaseConfig;
@@ -141,6 +142,10 @@ export const api = {
     localApi.deletePerson(userId);
   },
   async createPersonnelMember(input: CreatePersonnelInput): Promise<Profile> {
+    const me = await api.currentUser();
+    if (!me || normalizePersonnelRole(me) !== "Admin") {
+      throw new Error("只有 Admin 可以新增 Member");
+    }
     const display_name = input.display_name.trim();
     if (!display_name) throw new Error("姓名不能空白");
     const personnel_role = input.personnel_role;
