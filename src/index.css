@@ -3137,6 +3137,13 @@ select.pi-state {
   font-size: 13px;
 }
 
+.note-shared-banner {
+  margin: 0;
+  padding: 10px 16px 0;
+  font-size: 12px;
+  color: var(--note-muted, #9aa0a6);
+}
+
 .note-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
