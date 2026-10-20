@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SharedStoreBanner } from "../components/SharedStoreBanner";
 import { firstUrlInText, notesStore } from "../lib/notesStore";
 import { NOTE_COLORS, type NoteColor, type NoteItem } from "../lib/types";
 
@@ -149,9 +150,7 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
 
       {error && <p className="note-error">{error}</p>}
 
-      <p className="note-shared-banner" role="status">
-        Shared with all members — notes persist in the org store (same as projects); every logged-in user sees the full list.
-      </p>
+      <SharedStoreBanner onMigrated={() => void refresh()} />
 
       <div className="note-grid">
         {filtered.length === 0 ? (

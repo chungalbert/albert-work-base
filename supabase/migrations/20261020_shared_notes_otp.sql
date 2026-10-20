@@ -1,6 +1,7 @@
 -- Shared sticky notes + OTP vault for all authenticated members (no owner-only list filter).
--- Apply this migration on the live Supabase project after deploying #33+ Note/OTP cloud paths.
--- Until applied, the app falls back to org localStorage (`awb-store-v1`) for Note/OTP.
+-- REQUIRED for production cross-user sharing (Admin ↔ Lay_Zhang).
+-- Apply via Supabase SQL Editor — see docs/apply-shared-notes-otp.md
+-- App cloud mode does NOT sticky-fall-back to per-browser localStorage for writes.
 
 create table if not exists public.shared_notes (
   id uuid primary key default gen_random_uuid(),

@@ -2,6 +2,13 @@ import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
 import { projectsUiStore, type ProjectFieldPatch } from "./projectsUiStore";
+import {
+  CLOUD_TABLES_MISSING_MESSAGE,
+  isSharedStoreUnavailableError,
+  markSharedCloudReady,
+  markSharedCloudUnavailable,
+  maybeAutoMigrateLocalShared,
+} from "./sharedStore";
 import { hasSupabaseConfig } from "./util";
 import {
   normalizePersonnelRole,
@@ -24,47 +31,34 @@ import {
 export const isCloud = hasSupabaseConfig;
 
 /**
- * When Supabase is configured but shared_notes / otp_vault_entries are missing
- * (migration not applied), stick to the org local store for the rest of the session
- * so Note/OTP saves still succeed for authenticated users.
+ * Cloud mode: always use Supabase shared tables (all authenticated users).
+ * Never sticky-fall-back to per-browser localStorage — that siloed Admin vs Lay_Zhang (#35).
+ * Local-only builds (no VITE_SUPABASE_*) still use awb-store-v1.
+ * Reads may surface local leftovers only while tables are missing (with UI banner).
+ * Writes in cloud mode require tables; otherwise throw apply-migration guidance.
  */
-let sharedCloudUnavailable = false;
-
-function isSharedStoreUnavailableError(err: unknown): boolean {
-  const msg = (
-    err && typeof err === "object" && "message" in err
-      ? String((err as { message?: unknown }).message ?? "")
-      : err instanceof Error
-        ? err.message
-        : String(err ?? "")
-  ).toLowerCase();
-  const code =
-    err && typeof err === "object" && "code" in err
-      ? String((err as { code?: unknown }).code ?? "")
-      : "";
-  return (
-    code === "42P01" ||
-    code === "PGRST205" ||
-    code === "PGRST204" ||
-    msg.includes("could not find the table") ||
-    msg.includes("does not exist") ||
-    msg.includes("schema cache") ||
-    msg.includes("shared_notes") && msg.includes("not find") ||
-    msg.includes("otp_vault_entries") && msg.includes("not find")
-  );
-}
-
-async function withSharedStoreFallback<T>(cloudCall: () => Promise<T>, localCall: () => T | Promise<T>): Promise<T> {
-  if (!hasSupabaseConfig() || sharedCloudUnavailable) {
-    return localCall();
+async function withSharedCloud<T>(
+  cloudCall: () => Promise<T>,
+  localRead: () => T | Promise<T>,
+  mode: "read" | "write",
+): Promise<T> {
+  if (!hasSupabaseConfig()) {
+    return localRead();
   }
   try {
-    return await cloudCall();
+    const result = await cloudCall();
+    markSharedCloudReady();
+    void maybeAutoMigrateLocalShared();
+    return result;
   } catch (err) {
     if (!isSharedStoreUnavailableError(err)) throw err;
-    sharedCloudUnavailable = true;
-    console.warn("[awb] shared_notes/otp_vault_entries unavailable; using org local store", err);
-    return localCall();
+    markSharedCloudUnavailable();
+    if (mode === "write") {
+      throw new Error(CLOUD_TABLES_MISSING_MESSAGE);
+    }
+    // Degraded read: show this browser's leftovers so Admin can still see pre-fix data
+    // until migration is applied + Upload local runs. Other users will see [].
+    return localRead();
   }
 }
 
@@ -369,28 +363,28 @@ export const api = {
     return cloudApi.bootstrapAdmin(username, password, email);
   },
 
-  /** Shared notes — visible to all authenticated members. */
+  /** Shared notes — visible to all authenticated members (no owner filter). */
   async listNotes(): Promise<NoteItem[]> {
-    return withSharedStoreFallback(() => cloudApi.listNotes(), () => localApi.listNotes());
+    return withSharedCloud(() => cloudApi.listNotes(), () => localApi.listNotes(), "read");
   },
   async createNote(input: { title: string; body: string; color: NoteColor; url?: string }): Promise<NoteItem> {
-    return withSharedStoreFallback(() => cloudApi.createNote(input), () => localApi.createNote(input));
+    return withSharedCloud(() => cloudApi.createNote(input), () => localApi.createNote(input), "write");
   },
   async updateNote(
     id: string,
     patch: Partial<{ title: string; body: string; color: NoteColor; url: string; pinned: boolean }>,
   ): Promise<NoteItem> {
-    return withSharedStoreFallback(() => cloudApi.updateNote(id, patch), () => localApi.updateNote(id, patch));
+    return withSharedCloud(() => cloudApi.updateNote(id, patch), () => localApi.updateNote(id, patch), "write");
   },
   async removeNote(id: string) {
-    await withSharedStoreFallback(() => cloudApi.removeNote(id), () => {
+    await withSharedCloud(() => cloudApi.removeNote(id), () => {
       localApi.removeNote(id);
-    });
+    }, "write");
   },
 
-  /** Shared OTP vault — visible to all authenticated members. */
+  /** Shared OTP vault — visible to all authenticated members (no owner filter). */
   async listOtpEntries(): Promise<OtpVaultEntry[]> {
-    return withSharedStoreFallback(() => cloudApi.listOtpEntries(), () => localApi.listOtpEntries());
+    return withSharedCloud(() => cloudApi.listOtpEntries(), () => localApi.listOtpEntries(), "read");
   },
   async addOtpEntry(input: {
     label?: string;
@@ -402,11 +396,11 @@ export const api = {
     access_password?: string;
     owner_id?: string;
   }): Promise<OtpVaultEntry> {
-    return withSharedStoreFallback(() => cloudApi.addOtpEntry(input), () => localApi.addOtpEntry(input));
+    return withSharedCloud(() => cloudApi.addOtpEntry(input), () => localApi.addOtpEntry(input), "write");
   },
   async removeOtpEntry(id: string) {
-    await withSharedStoreFallback(() => cloudApi.removeOtpEntry(id), () => {
+    await withSharedCloud(() => cloudApi.removeOtpEntry(id), () => {
       localApi.removeOtpEntry(id);
-    });
+    }, "write");
   },
 };

@@ -855,6 +855,14 @@ export const localApi = {
     store.otpEntries = (store.otpEntries ?? []).filter((e) => e.id !== id);
     save(store);
   },
+
+  /** Clear Note/OTP arrays after successful upload to shared cloud (secrets not logged). */
+  clearSharedLocal() {
+    const store = load();
+    store.notes = [];
+    store.otpEntries = [];
+    save(store);
+  },
 };
 
 export function ensureSampleIfEmpty() {
