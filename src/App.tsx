@@ -286,7 +286,9 @@ function Shell() {
               <GanttPage />
             </Suspense>
           )}
-          {currentView === "guides" && <GuidesPage />}
+          {currentView === "guides" && (
+            <GuidesPage onOpenOtp={() => setView("otp")} />
+          )}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />
           )}

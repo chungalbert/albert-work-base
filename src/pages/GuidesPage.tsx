@@ -63,7 +63,7 @@ function GuideArticle({ guide, onBack }: { guide: GuideDoc; onBack: () => void }
   );
 }
 
-export function GuidesPage() {
+export function GuidesPage({ onOpenOtp }: { onOpenOtp?: () => void }) {
   const [guideId, setGuideId] = useState<string | null>(null);
 
   if (guideId === "whlk") {
@@ -91,6 +91,15 @@ export function GuidesPage() {
             <span className="ok-pill">開啟</span>
           </button>
         ))}
+        <button
+          className="panel guide-card"
+          type="button"
+          onClick={() => onOpenOtp?.()}
+        >
+          <h2>OTP Vault</h2>
+          <p>本機 TOTP 密碼庫：即時六位數驗證碼、倒數與複製。密鑰只存在瀏覽器。</p>
+          <span className="ok-pill">開啟</span>
+        </button>
       </div>
     </section>
   );
