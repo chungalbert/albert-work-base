@@ -17,9 +17,39 @@ type GanttChart = InstanceType<typeof Gantt> & {
   dates?: Date[];
   gantt_start?: Date;
   gantt_end?: Date;
-  setup_date_values?: () => void;
-  render?: () => void;
+  options?: { view_mode?: string; column_width?: number };
+  $svg?: SVGElement;
+  setup_gantt_dates?: () => void;
+  change_view_mode: (mode?: string) => void;
 };
+
+const PAD_WEEKS = 3;
+
+function weekWindow(weekStart: string, padWeeks = PAD_WEEKS) {
+  const start = addDaysISO(weekStart, -padWeeks * 7);
+  // Exclusive end so Week columns cover selected±pad.
+  const end = addDaysISO(weekStart, (padWeeks + 1) * 7);
+  return { start, end };
+}
+
+/** Task overlaps [winStart, winEnd). */
+function overlapsWindow(start: string, end: string, winStart: string, winEnd: string) {
+  return end >= winStart && start < winEnd;
+}
+
+/**
+ * Clamp bar span to the visible window so x/width stay under the WW headers.
+ * Drag still persists the (possibly clamped) dates — same as editing within the view.
+ */
+function clampToWindow(start: string, end: string, winStart: string, winEnd: string) {
+  const lastDay = addDaysISO(winEnd, -1);
+  const clampedStart = start < winStart ? winStart : start;
+  const clampedEnd = end > lastDay ? lastDay : end;
+  return {
+    start: clampedStart,
+    end: clampedEnd < clampedStart ? clampedStart : clampedEnd,
+  };
+}
 
 /** Label each Week column as WW##; highlight the selected week. */
 function labelWeeks(root: HTMLElement, gantt: GanttChart, selectedWW: string) {
@@ -33,18 +63,31 @@ function labelWeeks(root: HTMLElement, gantt: GanttChart, selectedWW: string) {
   });
 }
 
-/** Constrain chart to a window of weeks around the selected Monday. */
-function applyWeekWindow(gantt: GanttChart, weekStart: string, padWeeks = 3) {
-  gantt.gantt_start = parseISODate(addDaysISO(weekStart, -padWeeks * 7));
-  // Exclusive end so the last visible week column is included.
-  gantt.gantt_end = parseISODate(addDaysISO(weekStart, (padWeeks + 1) * 7));
-  gantt.setup_date_values?.();
-  gantt.render?.();
+/**
+ * Lock frappe-gantt's timeline to the week window so grid columns and bars share one origin.
+ * Override setup_gantt_dates (skips ±1 month task padding) then change_view_mode.
+ */
+function applyWeekWindow(gantt: GanttChart, weekStart: string, padWeeks = PAD_WEEKS) {
+  const { start, end } = weekWindow(weekStart, padWeeks);
+  const winStart = parseISODate(start);
+  const winEnd = parseISODate(end);
+
+  gantt.setup_gantt_dates = function setup_gantt_dates(this: GanttChart) {
+    this.gantt_start = new Date(winStart.getTime());
+    this.gantt_end = new Date(winEnd.getTime());
+  };
+  gantt.change_view_mode("Week");
+
+  const cols = gantt.dates?.length ?? 0;
+  const columnWidth = gantt.options?.column_width ?? 140;
+  if (gantt.$svg && cols > 0) {
+    gantt.$svg.setAttribute("width", String(cols * columnWidth));
+    gantt.$svg.style.overflow = "hidden";
+  }
 }
 
 function scrollToWeek(root: HTMLElement, gantt: GanttChart, weekStart: string) {
-  const parent = (root.querySelector(".gantt-container") as HTMLElement | null)
-    ?? root;
+  const parent = (root.querySelector(".gantt-container") as HTMLElement | null) ?? root;
   if (!gantt.dates?.length) return;
   const target = parseISODate(weekStart).getTime();
   let index = gantt.dates.findIndex((date) => formatISODate(date) === weekStart);
@@ -52,8 +95,7 @@ function scrollToWeek(root: HTMLElement, gantt: GanttChart, weekStart: string) {
     index = gantt.dates.findIndex((date) => Math.abs(date.getTime() - target) < 86400000);
   }
   if (index < 0) return;
-  // frappe-gantt Week column_width defaults to 140.
-  const columnWidth = 140;
+  const columnWidth = gantt.options?.column_width ?? 140;
   parent.scrollLeft = Math.max(0, index * columnWidth - columnWidth);
 }
 
@@ -66,20 +108,31 @@ export function GanttPage() {
   const selected = isoWeekParts(weekStart);
   const selectedWW = formatWW(weekStart);
   const isCurrentWeek = weekStart === startOfWeekMonday();
+  const { start: winStart, end: winEnd } = weekWindow(weekStart);
+  const visibleCount = tasks.reduce(
+    (n, task) => n + (overlapsWindow(task.start_date, task.due_date, winStart, winEnd) ? 1 : 0),
+    0,
+  );
 
   useEffect(() => {
     if (!host.current) return;
     host.current.innerHTML = "";
-    const rows = tasks.map((task) => ({
-      id: task.id,
-      name: isAll ? `${projectName(task.project_id)} · ${task.title}` : task.title,
-      start: task.start_date,
-      end: task.due_date,
-      progress: 100,
-      custom_class: task.status,
-    }));
+    const { start: rangeStart, end: rangeEnd } = weekWindow(weekStart);
+    const rows = tasks
+      .filter((task) => overlapsWindow(task.start_date, task.due_date, rangeStart, rangeEnd))
+      .map((task) => {
+        const span = clampToWindow(task.start_date, task.due_date, rangeStart, rangeEnd);
+        return {
+          id: task.id,
+          name: isAll ? `${projectName(task.project_id)} · ${task.title}` : task.title,
+          start: span.start,
+          end: span.end,
+          progress: 100,
+          custom_class: task.status,
+        };
+      });
     if (rows.length === 0) return;
-    chart.current = new Gantt(host.current, rows, {
+    const next = new Gantt(host.current, rows, {
       view_mode: "Week",
       on_date_change: (task: { id: string }, start: Date, end: Date) => {
         const current = tasks.find((t) => t.id === task.id);
@@ -95,10 +148,11 @@ export function GanttPage() {
           })
           .then(reload);
       },
-    });
-    applyWeekWindow(chart.current, weekStart);
-    labelWeeks(host.current, chart.current, selectedWW);
-    scrollToWeek(host.current, chart.current, weekStart);
+    }) as GanttChart;
+    chart.current = next;
+    applyWeekWindow(next, weekStart);
+    labelWeeks(host.current, next, selectedWW);
+    scrollToWeek(host.current, next, weekStart);
   }, [tasks, user, reload, isAll, projectName, canLeadProject, weekStart, selectedWW]);
 
   return (
@@ -144,6 +198,8 @@ export function GanttPage() {
       </div>
       {tasks.length === 0 ? (
         <p className="hint">{isAll ? "還沒有任務。" : "這個專案還沒有任務。"}</p>
+      ) : visibleCount === 0 ? (
+        <p className="hint">這個週次視窗沒有任務。用 ‹ › 換週，或回到目前週。</p>
       ) : (
         <div className="gantt-box">
           <div ref={host} />
