@@ -6,6 +6,7 @@ const VIEW_CRUMB: Partial<Record<ViewId, string>> = {
   gantt: "Project schedule",
   guides: "教學",
   notes: "Note",
+  chat: "Chat",
   tasks: "Tasks",
 };
 
