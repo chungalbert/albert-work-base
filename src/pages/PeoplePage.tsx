@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import {
   isTaskOpen,
@@ -8,8 +8,14 @@ import {
   type PersonnelRole,
   type Profile,
 } from "../lib/types";
+import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import { DEFAULT_PASSWORD } from "../lib/util";
+
+type SaveStatus =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; seconds: number };
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -25,8 +31,14 @@ function avatarTone(name: string): string {
   return tones[hash];
 }
 
+function formatSaveSeconds(ms: number): number {
+  return Math.max(0, Math.round(ms / 10) / 100);
+}
+
 export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
+  const { user } = useAuth();
   const { profiles, allMembers, allTasks, projects, reload } = useStore();
+  const isAdmin = Boolean(user && normalizePersonnelRole(user) === "Admin");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [columns, setColumns] = useState<PersonnelColumn[]>([]);
@@ -34,6 +46,8 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [newColLabel, setNewColLabel] = useState("");
   const [memberOpen, setMemberOpen] = useState(false);
   const [memberBusy, setMemberBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
+  const saveHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [memberForm, setMemberForm] = useState({
     display_name: "",
     username: "",
@@ -51,6 +65,44 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   useEffect(() => {
     void refreshColumns();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setMemberOpen(false);
+      setMemberBusy(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    return () => {
+      if (saveHideTimer.current) clearTimeout(saveHideTimer.current);
+    };
+  }, []);
+
+  const runSave = async <T,>(work: () => Promise<T>): Promise<T | undefined> => {
+    if (saveHideTimer.current) {
+      clearTimeout(saveHideTimer.current);
+      saveHideTimer.current = null;
+    }
+    setSaveStatus({ kind: "saving" });
+    const started = performance.now();
+    try {
+      // Optional delay for screenshot / local demos (localStorage AWB_SLOW_SAVE=ms).
+      const slow = Number(localStorage.getItem("AWB_SLOW_SAVE") || "0");
+      if (slow > 0) await new Promise((r) => setTimeout(r, slow));
+      const result = await work();
+      const seconds = formatSaveSeconds(performance.now() - started);
+      setSaveStatus({ kind: "saved", seconds });
+      saveHideTimer.current = setTimeout(() => {
+        setSaveStatus({ kind: "idle" });
+        saveHideTimer.current = null;
+      }, 1000);
+      return result;
+    } catch (err) {
+      setSaveStatus({ kind: "idle" });
+      throw err;
+    }
+  };
 
   const rows = useMemo(() => {
     return profiles.map((profile) => {
@@ -80,8 +132,10 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     setError("");
     setBusyId(userId);
     try {
-      await api.updateProfile(userId, patch);
-      await reload();
+      await runSave(async () => {
+        await api.updateProfile(userId, patch);
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -93,8 +147,10 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     setError("");
     setBusyId(userId);
     try {
-      await api.setPersonProjects(userId, projectIds);
-      await reload();
+      await runSave(async () => {
+        await api.setPersonProjects(userId, projectIds);
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Project update failed");
     } finally {
@@ -106,10 +162,12 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     event.preventDefault();
     setError("");
     try {
-      await api.addPersonnelColumn(newColLabel);
-      setNewColLabel("");
-      setAddOpen(false);
-      await refreshColumns();
+      await runSave(async () => {
+        await api.addPersonnelColumn(newColLabel);
+        setNewColLabel("");
+        setAddOpen(false);
+        await refreshColumns();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add column failed");
     }
@@ -128,20 +186,27 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
 
   const onAddMember = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isAdmin) {
+      setError("只有 Admin 可以新增 Member");
+      setMemberOpen(false);
+      return;
+    }
     setError("");
     setMemberBusy(true);
     try {
-      await api.createPersonnelMember({
-        display_name: memberForm.display_name,
-        username: memberForm.username || undefined,
-        email: memberForm.email,
-        phone: memberForm.phone,
-        personnel_role: memberForm.personnel_role,
-        projectIds: memberForm.projectIds,
+      await runSave(async () => {
+        await api.createPersonnelMember({
+          display_name: memberForm.display_name,
+          username: memberForm.username || undefined,
+          email: memberForm.email,
+          phone: memberForm.phone,
+          personnel_role: memberForm.personnel_role,
+          projectIds: memberForm.projectIds,
+        });
+        resetMemberForm();
+        setMemberOpen(false);
+        await reload();
       });
-      resetMemberForm();
-      setMemberOpen(false);
-      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add member failed");
     } finally {
@@ -154,9 +219,11 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     if (!ok) return;
     setError("");
     try {
-      await api.removePersonnelColumn(columnId);
-      await refreshColumns();
-      await reload();
+      await runSave(async () => {
+        await api.removePersonnelColumn(columnId);
+        await refreshColumns();
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Remove column failed");
     }
@@ -168,7 +235,9 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     setError("");
     setBusyId(userId);
     try {
-      await api.resetPassword(userId);
+      await runSave(async () => {
+        await api.resetPassword(userId);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reset failed");
     } finally {
@@ -182,8 +251,10 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     setError("");
     setBusyId(userId);
     try {
-      await api.deletePerson(userId);
-      await reload();
+      await runSave(async () => {
+        await api.deletePerson(userId);
+        await reload();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -203,7 +274,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
             onClick={onGoDashboard}
             aria-label="Dashboard"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
               <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
@@ -216,16 +287,34 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         </nav>
 
         <div className="personnel-toolbar-actions">
-          <button
-            type="button"
-            className="personnel-add-col personnel-add-member"
-            onClick={() => {
-              setAddOpen(false);
-              setMemberOpen(true);
-            }}
-          >
-            + ADD MEMBER
-          </button>
+          {saveStatus.kind !== "idle" && (
+            <div
+              className={`personnel-save-status${saveStatus.kind === "saving" ? " is-saving" : " is-saved"}`}
+              role="status"
+              aria-live="polite"
+            >
+              {saveStatus.kind === "saving" ? (
+                <>
+                  <span className="personnel-save-spinner" aria-hidden="true" />
+                  <span>Saving</span>
+                </>
+              ) : (
+                <span>Saved {saveStatus.seconds.toFixed(2)}s</span>
+              )}
+            </div>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              className="personnel-add-col personnel-add-member"
+              onClick={() => {
+                setAddOpen(false);
+                setMemberOpen(true);
+              }}
+            >
+              + ADD MEMBER
+            </button>
+          )}
           <div className="personnel-add-wrap">
             <button
               type="button"
@@ -263,7 +352,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         </div>
       </header>
 
-      {memberOpen && (
+      {isAdmin && memberOpen && (
         <div className="personnel-modal-backdrop" role="presentation" onClick={() => !memberBusy && setMemberOpen(false)}>
           <form
             className="personnel-modal"

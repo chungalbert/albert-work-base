@@ -2160,7 +2160,8 @@ select.pi-state {
 
 .personnel-page {
   display: grid;
-  gap: 12px;
+  gap: 0;
+  align-content: start;
   min-height: calc(100vh - 24px);
 }
 
@@ -2171,8 +2172,9 @@ select.pi-state {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 16px;
   background: #292a2d;
   border-bottom: 1px solid var(--per-line);
 }
@@ -2180,13 +2182,14 @@ select.pi-state {
 .personnel-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--per-muted);
+  line-height: 1.2;
 }
 
 .personnel-bc-home,
@@ -2214,15 +2217,48 @@ select.pi-state {
   flex-wrap: wrap;
 }
 
+.personnel-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #3a3f4a;
+  color: #c5cdd8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.personnel-save-status.is-saved {
+  background: #2f3640;
+  color: #aeb6c2;
+}
+
+.personnel-save-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(197, 205, 216, 0.25);
+  border-top-color: #e8eaed;
+  border-radius: 50%;
+  animation: personnel-spin 0.7s linear infinite;
+}
+
+@keyframes personnel-spin {
+  to { transform: rotate(360deg); }
+}
+
 .personnel-add-wrap { position: relative; }
 
 .personnel-add-col {
   border: 1px solid var(--per-line);
   background: #1f2023;
   color: #fff;
-  border-radius: 10px;
-  padding: 9px 14px;
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   cursor: pointer;
@@ -2497,18 +2533,18 @@ select.pi-state {
 .personnel-check:hover { background: rgba(255, 255, 255, 0.06); }
 
 .personnel-error {
-  margin: 0 24px;
+  margin: 8px 16px 0;
   color: #f28b82;
   font-size: 13px;
 }
 
 .personnel-table-wrap {
-  margin: 0 24px;
+  margin: 8px 16px 0;
   background: var(--per-panel);
   border: 1px solid var(--per-line);
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: auto;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 72px);
 }
 
 .personnel-table {
