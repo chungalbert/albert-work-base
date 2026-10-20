@@ -549,15 +549,7 @@ function PersonRow({
     draftProjectIdsRef.current = draftProjectIds;
   }, [draftProjectIds]);
 
-  // Keep draft aligned with saved memberships while the picker is closed.
-  useEffect(() => {
-    if (pickerOpen) return;
-    setDraftProjectIds(projectIds);
-    draftProjectIdsRef.current = projectIds;
-    baselineProjectIdsRef.current = projectIds;
-  }, [pickerOpen, projectIds]);
-
-  // Seed draft when the picker opens; persist once when it closes if changed.
+  // Seed draft on open; on close persist if changed, then realign to saved props.
   useEffect(() => {
     if (pickerOpen) {
       if (!wasPickerOpenRef.current) {
@@ -568,12 +560,16 @@ function PersonRow({
       }
       return;
     }
-    if (!wasPickerOpenRef.current) return;
-    wasPickerOpenRef.current = false;
-    const next = draftProjectIdsRef.current;
-    if (!sameProjectIds(next, baselineProjectIdsRef.current)) {
-      onSetProjectsRef.current(next);
+    if (wasPickerOpenRef.current) {
+      wasPickerOpenRef.current = false;
+      const next = draftProjectIdsRef.current;
+      if (!sameProjectIds(next, baselineProjectIdsRef.current)) {
+        onSetProjectsRef.current(next);
+      }
     }
+    setDraftProjectIds(projectIds);
+    draftProjectIdsRef.current = projectIds;
+    baselineProjectIdsRef.current = projectIds;
   }, [pickerOpen, projectIds]);
 
   useEffect(() => {
