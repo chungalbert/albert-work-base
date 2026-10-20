@@ -2356,8 +2356,19 @@ select.pi-state {
   color: var(--per-text);
 }
 
+.shell-personnel .shell-main {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .shell-personnel .page-personnel {
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .shell-personnel .nav-group li button.on {
@@ -2366,10 +2377,12 @@ select.pi-state {
 }
 
 .personnel-page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  align-content: start;
-  min-height: calc(100vh - 24px);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .personnel-toolbar {
@@ -2751,8 +2764,9 @@ select.pi-state {
   background: var(--per-panel);
   border: 0;
   border-radius: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  max-height: calc(100vh - 44px);
 }
 
 .personnel-table {
