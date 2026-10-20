@@ -36,10 +36,12 @@ export function OtpVaultPage({
   const [unlocked, setUnlocked] = useState<Record<string, boolean>>({});
   const [unlockDraft, setUnlockDraft] = useState<Record<string, string>>({});
 
-  const refresh = () => setEntries(otpVaultStore.list());
+  const refresh = async () => {
+    setEntries(await otpVaultStore.list());
+  };
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, []);
 
   useEffect(() => {
@@ -49,12 +51,12 @@ export function OtpVaultPage({
 
   const remaining = useMemo(() => totpRemaining(30), [tick]);
 
-  const onAdd = (event: FormEvent) => {
+  const onAdd = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     try {
       const parsed = parseOtpInput(form.paste);
-      otpVaultStore.add({
+      await otpVaultStore.add({
         secret: parsed.secret,
         qr_text: parsed.qr_text,
         issuer: form.issuer.trim() || parsed.issuer,
@@ -65,22 +67,22 @@ export function OtpVaultPage({
       });
       setForm(EMPTY_FORM);
       setShowAdd(false);
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add entry");
     }
   };
 
-  const onDelete = (id: string) => {
+  const onDelete = async (id: string) => {
     const ok = window.confirm("Delete this OTP entry?");
     if (!ok) return;
-    otpVaultStore.remove(id);
+    await otpVaultStore.remove(id);
     setUnlocked((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
-    refresh();
+    await refresh();
   };
 
   const onCopy = async (id: string, code: string) => {
@@ -115,14 +117,14 @@ export function OtpVaultPage({
     <div className="otp-page">
       <header className="otp-toolbar">
         <nav className="otp-breadcrumb" aria-label="Breadcrumb">
-          <button type="button" className="otp-bc-home" onClick={onGoDashboard} aria-label="Dashboard">
+          <button type="button" className="otp-bc-home" onClick={onGoDashboard} aria-label="Tool">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
               <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
           </button>
           <button type="button" className="otp-bc-link" onClick={onGoDashboard}>
-            Dashboard
+            Tool
           </button>
           <span className="otp-bc-sep" aria-hidden="true">›</span>
           <span className="otp-bc-current">OTP Vault</span>
@@ -136,7 +138,7 @@ export function OtpVaultPage({
 
       <div className="otp-body">
         <p className="otp-shared-banner" role="status">
-          Shared with all members — every logged-in user can open Tool › OTP Vault and see entries.
+          Shared with all members — vault persists in the org store (same as projects). Open from FEATURE › Tool.
         </p>
         {error && !showAdd && <p className="otp-error">{error}</p>}
 

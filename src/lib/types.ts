@@ -6,9 +6,19 @@ export const TASK_STATUSES = [
   { id: "verify", label: "Verify" },
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
-export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes" | "chat" | "otp";
+export type ViewId =
+  | "home"
+  | "projects"
+  | "people"
+  | "tasks"
+  | "gantt"
+  | "guides"
+  | "notes"
+  | "chat"
+  | "tool"
+  | "otp";
 
-/** Client-side TOTP vault entry (secrets stay in localStorage only). */
+/** Shared TOTP vault entry (org-wide; secrets never committed to git). */
 export interface OtpVaultEntry {
   id: string;
   label: string;
@@ -20,10 +30,11 @@ export interface OtpVaultEntry {
   qr_text?: string;
   /** Optional data-URL thumbnail. */
   thumb?: string;
+  /** Creator username/id for audit only — does not filter list visibility. */
   owner_id?: string;
   /** If set, codes stay locked until unlocked this session. */
   access_password?: string;
-  /** Unix seconds or ISO — store as number when from import. */
+  /** Unix seconds. */
   created_at: number;
 }
 

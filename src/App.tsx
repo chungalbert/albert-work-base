@@ -8,6 +8,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { GuidesPage } from "./pages/GuidesPage";
 import { NotesPage } from "./pages/NotesPage";
 import { ChatPage } from "./pages/ChatPage";
+import { ToolPage } from "./pages/ToolPage";
 import { OtpVaultPage } from "./pages/OtpVaultPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
@@ -18,10 +19,7 @@ import { roleLabel } from "./lib/roles";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
 
-type NavLeaf = { id: ViewId; label: string; icon: string };
-type NavItem =
-  | (NavLeaf & { children?: undefined })
-  | { id: string; label: string; icon: string; children: NavLeaf[] };
+type NavItem = { id: ViewId; label: string; icon: string };
 type NavGroup = { key: string; label: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -41,12 +39,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "guides", label: "教學", icon: "book" },
       { id: "chat", label: "Chat", icon: "chat" },
       { id: "notes", label: "Note", icon: "note" },
-      {
-        id: "tool",
-        label: "Tool",
-        icon: "tool",
-        children: [{ id: "otp", label: "OTP Vault", icon: "otp" }],
-      },
+      { id: "tool", label: "Tool", icon: "tool" },
     ],
   },
   {
@@ -117,13 +110,6 @@ function NavIcon({ name }: { name: string }) {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       );
-    case "otp":
-      return (
-        <svg {...common}>
-          <rect x="3" y="11" width="18" height="11" rx="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-      );
     case "tool":
       return (
         <svg {...common}>
@@ -154,11 +140,8 @@ function Shell() {
     feature: true,
     management: true,
   });
-  const [openNavFolders, setOpenNavFolders] = useState<Record<string, boolean>>({
-    tool: true,
-  });
   const isLeader = Boolean(user?.is_admin || role === "leader");
-  // Only Personnel is leader-gated. FEATURE peers (incl. Tool › OTP Vault, Note) stay for everyone.
+  // Only Personnel is leader-gated. FEATURE peers (Tool, Note, Chat, 教學) stay for everyone.
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: isLeader ? group.items : group.items.filter((item) => item.id !== "people"),
@@ -179,10 +162,6 @@ function Shell() {
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const toggleNavFolder = (key: string) => {
-    setOpenNavFolders((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -210,54 +189,18 @@ function Shell() {
                 </button>
                 {open && (
                   <ul>
-                    {group.items.map((item) => {
-                      if (item.children?.length) {
-                        const folderOpen = openNavFolders[item.id] !== false;
-                        const childActive = item.children.some((c) => c.id === currentView);
-                        return (
-                          <li key={item.id} className="nav-folder">
-                            <button
-                              type="button"
-                              className={`nav-folder-toggle${childActive ? " on" : ""}`}
-                              onClick={() => toggleNavFolder(item.id)}
-                              aria-expanded={folderOpen}
-                            >
-                              <NavIcon name={item.icon} />
-                              <span>{item.label}</span>
-                              <span className={`chev ${folderOpen ? "open" : ""}`} aria-hidden="true">▾</span>
-                            </button>
-                            {folderOpen && (
-                              <ul className="nav-sub">
-                                {item.children.map((child) => (
-                                  <li key={child.id}>
-                                    <button
-                                      type="button"
-                                      className={currentView === child.id ? "on" : ""}
-                                      onClick={() => setView(child.id)}
-                                    >
-                                      <NavIcon name={child.icon} />
-                                      <span>{child.label}</span>
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </li>
-                        );
-                      }
-                      return (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            className={currentView === item.id ? "on" : ""}
-                            onClick={() => setView(item.id as ViewId)}
-                          >
-                            <NavIcon name={item.icon} />
-                            <span>{item.label}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
+                    {group.items.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={currentView === item.id || (item.id === "tool" && currentView === "otp") ? "on" : ""}
+                          onClick={() => setView(item.id)}
+                        >
+                          <NavIcon name={item.icon} />
+                          <span>{item.label}</span>
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>
@@ -324,7 +267,7 @@ function Shell() {
         <main
           className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}`}
         >
-          {!hideChrome && currentView !== "guides" && <ReminderBanner />}
+          {!hideChrome && currentView !== "guides" && currentView !== "tool" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (
             <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
@@ -344,9 +287,12 @@ function Shell() {
           {currentView === "chat" && (
             <ChatPage onGoDashboard={() => setView("home")} />
           )}
+          {currentView === "tool" && (
+            <ToolPage onOpenOtp={() => setView("otp")} />
+          )}
           {currentView === "otp" && (
             <OtpVaultPage
-              onGoDashboard={() => setView("home")}
+              onGoDashboard={() => setView("tool")}
               ownerId={user?.username}
             />
           )}

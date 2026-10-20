@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { firstUrlInText, notesStore } from "../lib/notesStore";
 import { NOTE_COLORS, type NoteColor, type NoteItem } from "../lib/types";
 
@@ -16,7 +16,7 @@ function emptyForm() {
 }
 
 export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
-  const [notes, setNotes] = useState<NoteItem[]>(() => notesStore.list());
+  const [notes, setNotes] = useState<NoteItem[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -24,7 +24,13 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [form, setForm] = useState(emptyForm());
   const [copiedId, setCopiedId] = useState("");
 
-  const refresh = () => setNotes(notesStore.list());
+  const refresh = async () => {
+    setNotes(await notesStore.list());
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,34 +60,34 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     setEditorOpen(true);
   };
 
-  const onSave = (event: FormEvent) => {
+  const onSave = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     try {
       if (editingId) {
-        notesStore.update(editingId, form);
+        await notesStore.update(editingId, form);
       } else {
-        notesStore.create(form);
+        await notesStore.create(form);
       }
       setEditorOpen(false);
       setEditingId(null);
       setForm(emptyForm());
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     }
   };
 
-  const onDelete = (note: NoteItem) => {
+  const onDelete = async (note: NoteItem) => {
     const ok = window.confirm(`Delete note “${note.title}”?`);
     if (!ok) return;
-    notesStore.remove(note.id);
-    refresh();
+    await notesStore.remove(note.id);
+    await refresh();
   };
 
-  const onPin = (id: string) => {
-    notesStore.togglePin(id);
-    refresh();
+  const onPin = async (id: string) => {
+    await notesStore.togglePin(id);
+    await refresh();
   };
 
   const onCopy = async (note: NoteItem) => {
@@ -144,7 +150,7 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       {error && <p className="note-error">{error}</p>}
 
       <p className="note-shared-banner" role="status">
-        Shared with all members — every logged-in user can see these notes.
+        Shared with all members — notes persist in the org store (same as projects); every logged-in user sees the full list.
       </p>
 
       <div className="note-grid">

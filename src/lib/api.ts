@@ -8,6 +8,9 @@ import {
   type AccountInput,
   type CreatePersonnelInput,
   type InviteInput,
+  type NoteColor,
+  type NoteItem,
+  type OtpVaultEntry,
   type PersonnelColumn,
   type PersonnelRole,
   type Profile,
@@ -319,5 +322,49 @@ export const api = {
   async bootstrapAdmin(username: string, password: string, email: string) {
     if (!hasSupabaseConfig()) throw new Error("本機模式不需建立雲端管理員");
     return cloudApi.bootstrapAdmin(username, password, email);
+  },
+
+  /** Shared notes — visible to all authenticated members. */
+  async listNotes(): Promise<NoteItem[]> {
+    if (hasSupabaseConfig()) return cloudApi.listNotes();
+    return localApi.listNotes();
+  },
+  async createNote(input: { title: string; body: string; color: NoteColor; url?: string }): Promise<NoteItem> {
+    if (hasSupabaseConfig()) return cloudApi.createNote(input);
+    return localApi.createNote(input);
+  },
+  async updateNote(
+    id: string,
+    patch: Partial<{ title: string; body: string; color: NoteColor; url: string; pinned: boolean }>,
+  ): Promise<NoteItem> {
+    if (hasSupabaseConfig()) return cloudApi.updateNote(id, patch);
+    return localApi.updateNote(id, patch);
+  },
+  async removeNote(id: string) {
+    if (hasSupabaseConfig()) return cloudApi.removeNote(id);
+    localApi.removeNote(id);
+  },
+
+  /** Shared OTP vault — visible to all authenticated members. */
+  async listOtpEntries(): Promise<OtpVaultEntry[]> {
+    if (hasSupabaseConfig()) return cloudApi.listOtpEntries();
+    return localApi.listOtpEntries();
+  },
+  async addOtpEntry(input: {
+    label?: string;
+    issuer?: string;
+    account?: string;
+    secret: string;
+    qr_text?: string;
+    thumb?: string;
+    access_password?: string;
+    owner_id?: string;
+  }): Promise<OtpVaultEntry> {
+    if (hasSupabaseConfig()) return cloudApi.addOtpEntry(input);
+    return localApi.addOtpEntry(input);
+  },
+  async removeOtpEntry(id: string) {
+    if (hasSupabaseConfig()) return cloudApi.removeOtpEntry(id);
+    localApi.removeOtpEntry(id);
   },
 };

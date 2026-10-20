@@ -5,6 +5,9 @@ import type {
   CreatePersonnelInput,
   InviteInput,
   AccountInput,
+  NoteColor,
+  NoteItem,
+  OtpVaultEntry,
   PersonnelColumn,
   PersonnelRole,
   Profile,
@@ -13,10 +16,12 @@ import type {
   Role,
   Task,
 } from "./types";
-import { normalizePersonnelRole, normalizeTaskStatus } from "./types";
+import { NOTE_COLORS, normalizePersonnelRole, normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
+const LEGACY_NOTES_KEY = "awb-notes-v1";
+const LEGACY_OTP_KEY = "awb-otp-vault-v1";
 const ADMIN_HASH = "4dcaa92c01008dd30fa65408b02c8b400a00e6c6f20065fbf3be39c908c4ed20";
 
 interface Store {
@@ -28,6 +33,10 @@ interface Store {
   tasks: Task[];
   passwordScheme?: number;
   personnelColumns?: PersonnelColumn[];
+  /** Shared sticky notes — visible to every logged-in member. */
+  notes?: NoteItem[];
+  /** Shared OTP vault — visible to every logged-in member. */
+  otpEntries?: OtpVaultEntry[];
 }
 
 const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -61,7 +70,75 @@ function emptyStore(): Store {
     members: [],
     tasks: [],
     personnelColumns: [],
+    notes: [],
+    otpEntries: [],
   };
+}
+
+function normalizeNote(n: Partial<NoteItem> & { id?: string }): NoteItem | null {
+  if (!n?.id) return null;
+  return {
+    id: n.id,
+    title: String(n.title ?? ""),
+    body: String(n.body ?? ""),
+    color: (NOTE_COLORS as readonly string[]).includes(n.color as string) ? (n.color as NoteColor) : "blue",
+    pinned: Boolean(n.pinned),
+    url: n.url?.trim() || undefined,
+    created_at: n.created_at || new Date().toISOString(),
+    updated_at: n.updated_at || n.created_at || new Date().toISOString(),
+  };
+}
+
+function normalizeOtp(e: Partial<OtpVaultEntry> & { id?: string; secret?: string }): OtpVaultEntry | null {
+  if (!e?.id || !e.secret?.trim()) return null;
+  return {
+    id: e.id,
+    label: String(e.label ?? ""),
+    issuer: String(e.issuer ?? ""),
+    account: String(e.account ?? ""),
+    secret: e.secret.replace(/\s+/g, "").toUpperCase(),
+    qr_text: e.qr_text?.trim() || undefined,
+    thumb: e.thumb?.trim() || undefined,
+    owner_id: e.owner_id?.trim() || undefined,
+    access_password: e.access_password?.trim() || undefined,
+    created_at: typeof e.created_at === "number" ? e.created_at : Math.floor(Date.now() / 1000),
+  };
+}
+
+function migrateLegacyShared(store: Store): boolean {
+  let changed = false;
+  if (!Array.isArray(store.notes)) {
+    store.notes = [];
+    try {
+      const raw = localStorage.getItem(LEGACY_NOTES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as NoteItem[];
+        if (Array.isArray(parsed)) {
+          store.notes = parsed.map(normalizeNote).filter((n): n is NoteItem => Boolean(n));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    changed = true;
+  }
+  if (!Array.isArray(store.otpEntries)) {
+    store.otpEntries = [];
+    try {
+      const raw = localStorage.getItem(LEGACY_OTP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { entries?: OtpVaultEntry[] };
+        const list = Array.isArray(parsed) ? parsed : parsed.entries;
+        if (Array.isArray(list)) {
+          store.otpEntries = list.map(normalizeOtp).filter((e): e is OtpVaultEntry => Boolean(e));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    changed = true;
+  }
+  return changed;
 }
 
 function load(): Store {
@@ -72,6 +149,7 @@ function load(): Store {
     if (!parsed.profiles?.length) return emptyStore();
     parsed.profiles = parsed.profiles.map(normalizeProfile);
     if (!parsed.personnelColumns) parsed.personnelColumns = [];
+    if (migrateLegacyShared(parsed)) save(parsed);
     return parsed;
   } catch {
     return emptyStore();
@@ -669,6 +747,105 @@ export const localApi = {
     return store.tasks
       .filter((task) => visible.has(task.project_id))
       .map(normalizeTask);
+  },
+
+  /** Shared notes — full list for every member (no owner filter). */
+  listNotes(): NoteItem[] {
+    const notes = load().notes ?? [];
+    return [...notes].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return b.updated_at.localeCompare(a.updated_at);
+    });
+  },
+
+  createNote(input: { title: string; body: string; color: NoteColor; url?: string }): NoteItem {
+    const title = input.title.trim();
+    if (!title) throw new Error("Title is required");
+    const store = load();
+    const now = new Date().toISOString();
+    const note: NoteItem = {
+      id: crypto.randomUUID(),
+      title,
+      body: input.body.trim(),
+      color: input.color,
+      pinned: false,
+      url: input.url?.trim() || undefined,
+      created_at: now,
+      updated_at: now,
+    };
+    store.notes = [...(store.notes ?? []), note];
+    save(store);
+    return note;
+  },
+
+  updateNote(id: string, patch: Partial<{ title: string; body: string; color: NoteColor; url: string; pinned: boolean }>): NoteItem {
+    const store = load();
+    const notes = store.notes ?? [];
+    const idx = notes.findIndex((n) => n.id === id);
+    if (idx < 0) throw new Error("Note not found");
+    const prev = notes[idx];
+    if (patch.title !== undefined) {
+      const title = patch.title.trim();
+      if (!title) throw new Error("Title is required");
+      prev.title = title;
+    }
+    if (patch.body !== undefined) prev.body = patch.body.trim();
+    if (patch.color !== undefined) prev.color = patch.color;
+    if (patch.url !== undefined) prev.url = patch.url.trim() || undefined;
+    if (patch.pinned !== undefined) prev.pinned = patch.pinned;
+    prev.updated_at = new Date().toISOString();
+    notes[idx] = prev;
+    store.notes = notes;
+    save(store);
+    return prev;
+  },
+
+  removeNote(id: string) {
+    const store = load();
+    store.notes = (store.notes ?? []).filter((n) => n.id !== id);
+    save(store);
+  },
+
+  /** Shared OTP vault — full list for every member (no owner filter). */
+  listOtpEntries(): OtpVaultEntry[] {
+    return [...(load().otpEntries ?? [])].sort((a, b) => b.created_at - a.created_at);
+  },
+
+  addOtpEntry(input: {
+    label?: string;
+    issuer?: string;
+    account?: string;
+    secret: string;
+    qr_text?: string;
+    thumb?: string;
+    access_password?: string;
+    owner_id?: string;
+  }): OtpVaultEntry {
+    const store = load();
+    const issuer = (input.issuer ?? "").trim();
+    const account = (input.account ?? "").trim();
+    const label = (input.label ?? "").trim() || (issuer && account ? `${issuer} · ${account}` : issuer || account || "OTP entry");
+    const entry: OtpVaultEntry = {
+      id: `otp_${crypto.randomUUID()}`,
+      label,
+      issuer,
+      account,
+      secret: input.secret.replace(/\s+/g, "").toUpperCase(),
+      qr_text: input.qr_text?.trim() || undefined,
+      thumb: input.thumb?.trim() || undefined,
+      owner_id: input.owner_id?.trim() || undefined,
+      access_password: input.access_password?.trim() || undefined,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+    store.otpEntries = [entry, ...(store.otpEntries ?? [])];
+    save(store);
+    return entry;
+  },
+
+  removeOtpEntry(id: string) {
+    const store = load();
+    store.otpEntries = (store.otpEntries ?? []).filter((e) => e.id !== id);
+    save(store);
   },
 };
 
