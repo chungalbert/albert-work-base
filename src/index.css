@@ -3972,6 +3972,12 @@ select.pi-state {
   font: inherit;
 }
 
+.otp-shared-banner {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--otp-muted);
+}
+
 .otp-error {
   color: #f28b82;
   font-size: 13px;

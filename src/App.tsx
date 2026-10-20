@@ -158,6 +158,7 @@ function Shell() {
     tool: true,
   });
   const isLeader = Boolean(user?.is_admin || role === "leader");
+  // Only Personnel is leader-gated. FEATURE peers (incl. Tool › OTP Vault, Note) stay for everyone.
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: isLeader ? group.items : group.items.filter((item) => item.id !== "people"),
