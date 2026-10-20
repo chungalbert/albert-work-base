@@ -10,7 +10,7 @@ export function ToolPage({
       <div className="page-head page-head-compact">
         <div>
           <h1>Tool</h1>
-          <p>實用小工具。OTP Vault 與 WHEA Analyzer 都從這裡開啟。</p>
+          <p>實用小工具。OTP Vault 與線上 WHEA Analyzer 都從這裡開啟。</p>
         </div>
       </div>
       <div className="guide-list">
@@ -21,7 +21,7 @@ export function ToolPage({
         </button>
         <button className="panel guide-card" type="button" onClick={() => onOpenWhea?.()}>
           <h2>WHEA Analyzer</h2>
-          <p>Windows PowerShell 工具：分析 System.evtx 的 WHEA 硬體錯誤（PCIe BDF / HeaderLog / AER）。</p>
+          <p>上傳 System.evtx，線上分析 WHEA / PCIe AER / HeaderLog / TLP，並下載 TXT／HTML 報告。</p>
           <span className="ok-pill">開啟</span>
         </button>
       </div>
