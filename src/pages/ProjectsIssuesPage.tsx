@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   addAnalyzedNote,
   analyzedNoteCredit,
@@ -8,7 +8,17 @@ import {
 } from "../lib/analyzed";
 import { api } from "../lib/api";
 import { addDaysISO, todayISO } from "../lib/dates";
-import { isTaskOpen, TASK_STATUSES, type AnalyzedNote, type Profile, type Task, type TaskStatus } from "../lib/types";
+import { PROJECT_BUILTIN_COLUMNS, type ProjectBuiltinKey } from "../lib/projectsUiStore";
+import {
+  isTaskOpen,
+  TASK_STATUSES,
+  type AnalyzedNote,
+  type Profile,
+  type Project,
+  type ProjectColumn,
+  type Task,
+  type TaskStatus,
+} from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 
@@ -106,7 +116,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [moreOpen, setMoreOpen] = useState(false);
-  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [addColOpen, setAddColOpen] = useState(false);
+  const [newColLabel, setNewColLabel] = useState("");
+  const [extraColumns, setExtraColumns] = useState<ProjectColumn[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -123,39 +135,85 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
   const canCreate = Boolean(user?.is_admin || role === "leader");
 
-  const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "Unassigned";
-
-  const leaderOf = (pid: string) => {
-    const leader = allMembers.find((m) => m.project_id === pid && m.role === "leader");
-    return leader ? nameOf(leader.user_id) : "—";
+  const refreshProjectColumns = async () => {
+    setExtraColumns(await api.listProjectColumns());
   };
+
+  useEffect(() => {
+    void refreshProjectColumns();
+  }, []);
+
+  const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "Unassigned";
 
   const projectRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return projects
-      .map((p) => {
-        const tasks = allTasks.filter((t) => t.project_id === p.id);
-        const open = tasks.filter((t) => t.status === "opening").length;
-        const working = tasks.filter((t) => t.status === "working").length;
-        const closing = tasks.filter((t) => t.status === "closing").length;
-        const closed = tasks.filter((t) => t.status === "verify").length;
-        return {
-          project: p,
-          open,
-          working,
-          closing,
-          closed,
-          total: tasks.length,
-          leader: leaderOf(p.id),
-          members: allMembers.filter((m) => m.project_id === p.id).length,
-        };
-      })
-      .filter((row) => {
-        if (!q) return true;
-        const hay = [row.project.name, row.project.description, row.leader].join(" ").toLowerCase();
-        return hay.includes(q);
-      });
-  }, [projects, allTasks, allMembers, profiles, query]);
+    return projects.filter((p) => {
+      if (!q) return true;
+      const hay = [
+        p.name,
+        p.description,
+        p.lenovo_name,
+        p.bios_id,
+        p.platform,
+        p.dis,
+        p.ss_date,
+        p.eol_date,
+        p.security_update,
+        p.talent_policy,
+        ...Object.values(p.custom ?? {}),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [projects, query]);
+
+  const builtinValue = (project: Project, key: ProjectBuiltinKey): string => {
+    if (key === "compal_name") return project.name ?? "";
+    return (project[key] as string | undefined) ?? "";
+  };
+
+  const patchProjectField = async (projectId: string, patch: Parameters<typeof api.updateProject>[1]) => {
+    setError("");
+    setBusyId(projectId);
+    try {
+      await api.updateProject(projectId, patch);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const onAddProjectColumn = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    try {
+      await api.addProjectColumn(newColLabel);
+      setNewColLabel("");
+      setAddColOpen(false);
+      await refreshProjectColumns();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Add column failed");
+    }
+  };
+
+  const onRemoveProjectColumn = async (columnId: string, label: string) => {
+    const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
+    if (!ok) return;
+    setError("");
+    try {
+      await api.removeProjectColumn(columnId);
+      await refreshProjectColumns();
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Remove column failed");
+    }
+  };
+
+  const listColSpan = PROJECT_BUILTIN_COLUMNS.length + extraColumns.length + 1;
 
   const detailTasks = useMemo(() => {
     if (!project) return [] as Task[];
@@ -272,7 +330,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
       <header className="pi-toolbar">
         <nav className="pi-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="pi-bc-home" onClick={onGoDashboard} aria-label="Dashboard">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
               <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
@@ -308,39 +366,42 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         </div>
 
         <div className="pi-actions">
-          <div className="pi-menu-wrap">
-            <button
-              type="button"
-              className="pi-icon-btn"
-              title="Columns"
-              aria-label="Project columns"
-              aria-expanded={columnsOpen}
-              onClick={() => {
-                setColumnsOpen((v) => !v);
-                setMoreOpen(false);
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3" />
-              </svg>
-            </button>
-            {columnsOpen && (
-              <div className="pi-popover">
-                <p className="pi-popover-title">Visible columns</p>
-                <p className="pi-muted">
-                  {mode === "list"
-                    ? "Name, description, open / working / closed counts, leader, members, actions."
-                    : "Number, state, name, owner, dates, analysis, actions."}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <button type="button" className="pi-icon-btn pi-icon-btn-primary" title="Saved" aria-label="Saved" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          </button>
+          {mode === "list" && (
+            <div className="pi-add-col-wrap">
+              <button
+                type="button"
+                className="pi-add-col"
+                aria-expanded={addColOpen}
+                onClick={() => {
+                  setMoreOpen(false);
+                  setAddColOpen((v) => !v);
+                }}
+              >
+                + ADD COLUMN
+              </button>
+              {addColOpen && (
+                <form className="pi-add-popover" onSubmit={onAddProjectColumn}>
+                  <label>
+                    Column name
+                    <input
+                      value={newColLabel}
+                      onChange={(e) => setNewColLabel(e.target.value)}
+                      placeholder="e.g. Owner"
+                      autoFocus
+                    />
+                  </label>
+                  <div className="pi-add-actions">
+                    <button type="button" className="pi-btn-ghost" onClick={() => setAddColOpen(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="pi-btn-primary" disabled={!newColLabel.trim()}>
+                      Add
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="pi-menu-wrap">
             <button
@@ -351,7 +412,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
               aria-expanded={moreOpen}
               onClick={() => {
                 setMoreOpen((v) => !v);
-                setColumnsOpen(false);
+                setAddColOpen(false);
               }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -411,7 +472,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         <form className="pi-create-card" onSubmit={onCreateProject}>
           <h2>New Project</h2>
           <label>
-            Name
+            Compal project name
             <input value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
           <label>
@@ -431,63 +492,142 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
       {mode === "list" ? (
         <div className="pi-table-wrap">
-          <table className="pi-table">
+          <table className="pi-table pi-project-table">
             <thead>
               <tr>
-                <th>PROJECT NAME</th>
-                <th>DESCRIPTION</th>
-                <th>OPEN</th>
-                <th>WORKING</th>
-                <th>CLOSING</th>
-                <th>CLOSED</th>
-                <th>TOTAL</th>
-                <th>LEADER</th>
-                <th>MEMBERS</th>
+                {PROJECT_BUILTIN_COLUMNS.map((col) => (
+                  <th key={col.key}>{col.label}</th>
+                ))}
+                {extraColumns.map((col) => (
+                  <th key={col.id}>
+                    <span className="pi-col-head">
+                      {col.label.toUpperCase()}
+                      <button
+                        type="button"
+                        className="pi-col-remove"
+                        title={`Remove ${col.label}`}
+                        onClick={() => void onRemoveProjectColumn(col.id, col.label)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </th>
+                ))}
                 <th>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               {projectRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="pi-empty">
+                  <td colSpan={listColSpan} className="pi-empty">
                     {projects.length === 0 ? "No projects yet. Use More → New Project." : "No projects match this search."}
                   </td>
                 </tr>
               ) : (
-                projectRows.map((row) => (
-                  <tr key={row.project.id}>
-                    <td>
-                      <button type="button" className="pi-proj-link" onClick={() => openProject(row.project.id)}>
-                        {row.project.name}
-                      </button>
-                    </td>
-                    <td className="pi-desc">{row.project.description || "—"}</td>
-                    <td>{row.open}</td>
-                    <td>{row.working}</td>
-                    <td>{row.closing}</td>
-                    <td>{row.closed}</td>
-                    <td>{row.total}</td>
-                    <td>{row.leader}</td>
-                    <td>{row.members}</td>
-                    <td>
-                      <div className="pi-row-actions">
-                        <button type="button" className="pi-linkish" onClick={() => openProject(row.project.id)}>
-                          Open
-                        </button>
-                        {leaderProjectIds.includes(row.project.id) && (
-                          <button
-                            type="button"
-                            className="pi-linkish danger"
-                            disabled={busyId === row.project.id}
-                            onClick={() => void onDeleteProject(row.project.id, row.project.name)}
-                          >
-                            Delete
+                projectRows.map((project) => {
+                  const canEdit = leaderProjectIds.includes(project.id) || Boolean(user?.is_admin);
+                  const busy = busyId === project.id;
+                  return (
+                    <tr key={project.id}>
+                      {PROJECT_BUILTIN_COLUMNS.map((col) => {
+                        const value = builtinValue(project, col.key);
+                        const isDate = col.key === "ss_date" || col.key === "eol_date";
+                        if (col.key === "compal_name") {
+                          return (
+                            <td key={col.key}>
+                              {canEdit ? (
+                                <input
+                                  className="pi-cell-input pi-cell-input-name"
+                                  defaultValue={project.name}
+                                  key={`${project.id}-name-${project.name}`}
+                                  disabled={busy}
+                                  aria-label="Compal project name"
+                                  onBlur={(e) => {
+                                    const next = e.target.value.trim();
+                                    if (next && next !== project.name) {
+                                      void patchProjectField(project.id, { name: next });
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="pi-proj-link"
+                                  onClick={() => openProject(project.id)}
+                                >
+                                  {project.name || "—"}
+                                </button>
+                              )}
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={col.key}>
+                            {canEdit ? (
+                              <input
+                                className="pi-cell-input"
+                                type={isDate ? "date" : "text"}
+                                defaultValue={value}
+                                key={`${project.id}-${col.key}-${value}`}
+                                disabled={busy}
+                                aria-label={col.label}
+                                onBlur={(e) => {
+                                  const next = e.target.value.trim();
+                                  if (next !== value) {
+                                    void patchProjectField(project.id, { [col.key]: next });
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="pi-cell-text">{value || "—"}</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      {extraColumns.map((col) => {
+                        const value = project.custom?.[col.id] ?? "";
+                        return (
+                          <td key={col.id}>
+                            {canEdit ? (
+                              <input
+                                className="pi-cell-input"
+                                defaultValue={value}
+                                key={`${project.id}-${col.id}-${value}`}
+                                disabled={busy}
+                                aria-label={col.label}
+                                onBlur={(e) => {
+                                  const next = e.target.value;
+                                  if (next !== value) {
+                                    void patchProjectField(project.id, { custom: { [col.id]: next } });
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="pi-cell-text">{value || "—"}</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td>
+                        <div className="pi-row-actions">
+                          <button type="button" className="pi-linkish" onClick={() => openProject(project.id)}>
+                            Open
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {leaderProjectIds.includes(project.id) && (
+                            <button
+                              type="button"
+                              className="pi-linkish danger"
+                              disabled={busy}
+                              onClick={() => void onDeleteProject(project.id, project.name)}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

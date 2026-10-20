@@ -1,6 +1,7 @@
 import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
+import { projectsUiStore, type ProjectFieldPatch } from "./projectsUiStore";
 import { hasSupabaseConfig } from "./util";
 import {
   normalizePersonnelRole,
@@ -11,6 +12,7 @@ import {
   type PersonnelRole,
   type Profile,
   type Project,
+  type ProjectColumn,
   type ProjectMember,
   type Role,
   type Task,
@@ -20,6 +22,10 @@ export const isCloud = hasSupabaseConfig;
 
 function withPersonnelOverlay(profile: Profile): Profile {
   return personnelUiStore.mergeProfile(profile);
+}
+
+function withProjectOverlay(project: Project): Project {
+  return projectsUiStore.mergeProject(project);
 }
 
 function mergeProfilesWithExtras(profiles: Profile[]): Profile[] {
@@ -75,12 +81,32 @@ export const api = {
     return mergeProfilesWithExtras(localApi.listProfiles());
   },
   async listProjects(): Promise<Project[]> {
-    if (hasSupabaseConfig()) return cloudApi.listProjects();
-    return localApi.listProjects();
+    if (hasSupabaseConfig()) {
+      return (await cloudApi.listProjects()).map(withProjectOverlay);
+    }
+    return localApi.listProjects().map(withProjectOverlay);
   },
   async createProject(name: string, description: string): Promise<Project> {
-    if (hasSupabaseConfig()) return cloudApi.createProject(name, description);
-    return localApi.createProject(name, description);
+    if (hasSupabaseConfig()) return withProjectOverlay(await cloudApi.createProject(name, description));
+    return withProjectOverlay(localApi.createProject(name, description));
+  },
+  async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {
+    if (!hasSupabaseConfig()) {
+      return withProjectOverlay(localApi.updateProject(projectId, patch));
+    }
+    const projects = await cloudApi.listProjects();
+    const base = projects.find((p) => p.id === projectId);
+    if (!base) throw new Error("找不到專案");
+    return projectsUiStore.applyOverlay(projectId, base, patch);
+  },
+  async listProjectColumns(): Promise<ProjectColumn[]> {
+    return projectsUiStore.listColumns();
+  },
+  async addProjectColumn(label: string): Promise<ProjectColumn> {
+    return projectsUiStore.addColumn(label);
+  },
+  async removeProjectColumn(columnId: string) {
+    projectsUiStore.removeColumn(columnId);
   },
   async listLeaderProjectIds(): Promise<string[]> {
     if (hasSupabaseConfig()) return cloudApi.listLeaderProjectIds();

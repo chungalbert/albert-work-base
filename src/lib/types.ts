@@ -52,12 +52,28 @@ export function normalizePersonnelRole(profile: Pick<Profile, "is_admin" | "pers
   return profile.is_admin ? "Admin" : "DE";
 }
 
+export interface ProjectColumn {
+  id: string;
+  label: string;
+}
+
 export interface Project {
   id: string;
+  /** Compal project name (primary display name). */
   name: string;
   description: string;
   created_by: string;
   created_at: string;
+  lenovo_name?: string;
+  bios_id?: string;
+  platform?: string;
+  dis?: string;
+  ss_date?: string;
+  eol_date?: string;
+  security_update?: string;
+  talent_policy?: string;
+  /** Values for user-defined Projects columns. */
+  custom?: Record<string, string>;
 }
 
 export interface ProjectMember {
