@@ -6,7 +6,7 @@ export type GanttCtor = new (
   options?: Record<string, unknown>,
 ) => {
   refresh(tasks: Array<Record<string, unknown>>): void;
-  change_view_mode(mode: string): void;
+  change_view_mode(mode?: string): void;
 };
 
 export const Gantt = GanttLib as unknown as GanttCtor;
