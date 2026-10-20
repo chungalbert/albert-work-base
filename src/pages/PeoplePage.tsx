@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { api } from "../lib/api";
 import {
@@ -13,6 +13,13 @@ import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { DEFAULT_PASSWORD } from "../lib/util";
+
+function sameProjectIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((id, i) => id === right[i]);
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -478,6 +485,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                   onTogglePicker={() =>
                     setProjectPickerId((id) => (id === profile.id ? null : profile.id))
                   }
+                  onClosePicker={() => setProjectPickerId(null)}
                   onPatch={(patch) => void patchProfile(profile.id, patch)}
                   onSetProjects={(ids) => void setProjects(profile.id, ids)}
                   onReset={() => void resetPassword(profile.id, profile.display_name)}
@@ -504,6 +512,7 @@ function PersonRow({
   busy,
   pickerOpen,
   onTogglePicker,
+  onClosePicker,
   onPatch,
   onSetProjects,
   onReset,
@@ -520,11 +529,71 @@ function PersonRow({
   busy: boolean;
   pickerOpen: boolean;
   onTogglePicker: () => void;
+  onClosePicker: () => void;
   onPatch: (patch: Parameters<typeof api.updateProfile>[1]) => void;
   onSetProjects: (ids: string[]) => void;
   onReset: () => void;
   onDelete: () => void;
 }) {
+  const projectsEditRef = useRef<HTMLDivElement>(null);
+  const [draftProjectIds, setDraftProjectIds] = useState(projectIds);
+  const draftProjectIdsRef = useRef(projectIds);
+  const baselineProjectIdsRef = useRef(projectIds);
+  const wasPickerOpenRef = useRef(false);
+  const onSetProjectsRef = useRef(onSetProjects);
+  const onClosePickerRef = useRef(onClosePicker);
+  onSetProjectsRef.current = onSetProjects;
+  onClosePickerRef.current = onClosePicker;
+
+  useEffect(() => {
+    draftProjectIdsRef.current = draftProjectIds;
+  }, [draftProjectIds]);
+
+  // Seed draft on open; on close persist if changed, then realign to saved props.
+  useEffect(() => {
+    if (pickerOpen) {
+      if (!wasPickerOpenRef.current) {
+        setDraftProjectIds(projectIds);
+        draftProjectIdsRef.current = projectIds;
+        baselineProjectIdsRef.current = projectIds;
+        wasPickerOpenRef.current = true;
+      }
+      return;
+    }
+    if (wasPickerOpenRef.current) {
+      wasPickerOpenRef.current = false;
+      const next = draftProjectIdsRef.current;
+      if (!sameProjectIds(next, baselineProjectIdsRef.current)) {
+        onSetProjectsRef.current(next);
+      }
+    }
+    setDraftProjectIds(projectIds);
+    draftProjectIdsRef.current = projectIds;
+    baselineProjectIdsRef.current = projectIds;
+  }, [pickerOpen, projectIds]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClosePickerRef.current();
+      }
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      const root = projectsEditRef.current;
+      if (root && !root.contains(event.target as Node)) {
+        onClosePickerRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [pickerOpen]);
+
   return (
     <tr>
       <td>
@@ -587,7 +656,7 @@ function PersonRow({
         </select>
       </td>
       <td>
-        <div className="personnel-projects-edit">
+        <div className="personnel-projects-edit" ref={projectsEditRef}>
           <button type="button" className="personnel-projects-btn" onClick={onTogglePicker} disabled={busy}>
             {projectCount === 0 ? (
               <em className="personnel-unassigned">Unassigned</em>
@@ -600,12 +669,12 @@ function PersonRow({
             <span className="personnel-edit-icon" aria-hidden="true">✎</span>
           </button>
           {pickerOpen && (
-            <div className="personnel-project-picker">
+            <div className="personnel-project-picker" role="dialog" aria-label="Project assignment">
               {projects.length === 0 ? (
                 <p className="personnel-muted">No projects yet.</p>
               ) : (
                 projects.map((p) => {
-                  const checked = projectIds.includes(p.id);
+                  const checked = draftProjectIds.includes(p.id);
                   return (
                     <label key={p.id} className="personnel-check">
                       <input
@@ -613,10 +682,9 @@ function PersonRow({
                         checked={checked}
                         disabled={busy}
                         onChange={() => {
-                          const next = checked
-                            ? projectIds.filter((id) => id !== p.id)
-                            : [...projectIds, p.id];
-                          onSetProjects(next);
+                          setDraftProjectIds((ids) =>
+                            checked ? ids.filter((id) => id !== p.id) : [...ids, p.id],
+                          );
                         }}
                       />
                       {p.name}
