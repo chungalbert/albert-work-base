@@ -10,6 +10,7 @@ import { NotesPage } from "./pages/NotesPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ToolPage } from "./pages/ToolPage";
 import { OtpVaultPage } from "./pages/OtpVaultPage";
+import { WheaToolPage } from "./pages/WheaToolPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -158,7 +159,9 @@ function Shell() {
   const isNotes = currentView === "notes";
   const isChat = currentView === "chat";
   const isOtp = currentView === "otp";
-  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isOtp;
+  const isWhea = currentView === "whea";
+  const isToolChild = isOtp || isWhea;
+  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isToolChild;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -166,7 +169,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}`}
     >
       <aside className="sidebar" aria-label="KSSW navigation">
         <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
@@ -193,7 +196,7 @@ function Shell() {
                       <li key={item.id}>
                         <button
                           type="button"
-                          className={currentView === item.id || (item.id === "tool" && currentView === "otp") ? "on" : ""}
+                          className={currentView === item.id || (item.id === "tool" && isToolChild) ? "on" : ""}
                           onClick={() => setView(item.id)}
                         >
                           <NavIcon name={item.icon} />
@@ -265,7 +268,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}`}
         >
           {!hideChrome && currentView !== "guides" && currentView !== "tool" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
@@ -288,13 +291,19 @@ function Shell() {
             <ChatPage onGoDashboard={() => setView("home")} />
           )}
           {currentView === "tool" && (
-            <ToolPage onOpenOtp={() => setView("otp")} />
+            <ToolPage
+              onOpenOtp={() => setView("otp")}
+              onOpenWhea={() => setView("whea")}
+            />
           )}
           {currentView === "otp" && (
             <OtpVaultPage
               onGoDashboard={() => setView("tool")}
               ownerId={user?.username}
             />
+          )}
+          {currentView === "whea" && (
+            <WheaToolPage onBack={() => setView("tool")} />
           )}
         </main>
       </div>

@@ -16,7 +16,8 @@ export type ViewId =
   | "notes"
   | "chat"
   | "tool"
-  | "otp";
+  | "otp"
+  | "whea";
 
 /** Shared TOTP vault entry (org-wide; secrets never committed to git). */
 export interface OtpVaultEntry {
