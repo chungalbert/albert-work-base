@@ -348,7 +348,7 @@ a:hover { text-decoration: underline; }
 }
 
 .shell .page-shell:not(.page-pi):not(.page-personnel) {
-  padding: 10px 16px 24px;
+  padding: 0 16px 24px;
 }
 
 .shell body,
