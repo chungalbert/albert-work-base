@@ -3097,6 +3097,32 @@ select.pi-state {
   color: var(--note-muted, #9aa0a6);
 }
 
+.shared-store-banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  font-size: 12px;
+  color: var(--muted, #64748b);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shared-store-banner.is-warn {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #92400e;
+}
+.shared-store-banner p { margin: 0; line-height: 1.45; }
+.shared-store-banner .btn { align-self: flex-start; }
+.shared-store-banner-info { color: inherit; opacity: 0.9; }
+.otp-body .shared-store-banner { margin-bottom: 14px; }
+.note-page .shared-store-banner,
+.shell-note .shared-store-banner {
+  margin: 8px 16px 0;
+}
+
 .note-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

@@ -411,4 +411,44 @@ export const cloudApi = {
     const { error } = await sb().from("otp_vault_entries").delete().eq("id", id);
     if (error) throw error;
   },
+
+  /** Upsert a local leftover note into the org-shared table (preserves id). */
+  async upsertSharedNote(note: NoteItem): Promise<void> {
+    const { error } = await sb().from("shared_notes").upsert(
+      {
+        id: note.id,
+        title: note.title,
+        body: note.body,
+        color: note.color,
+        pinned: Boolean(note.pinned),
+        url: note.url?.trim() || null,
+        created_at: note.created_at,
+        updated_at: note.updated_at,
+      },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
+  },
+
+  /** Upsert a local leftover OTP entry (preserves id; never log secret). */
+  async upsertOtpEntry(entry: OtpVaultEntry): Promise<void> {
+    const me = await cloudApi.currentUser();
+    const ownerLooksLikeUuid = Boolean(entry.owner_id && /^[0-9a-f-]{36}$/i.test(entry.owner_id));
+    const { error } = await sb().from("otp_vault_entries").upsert(
+      {
+        id: entry.id,
+        label: entry.label,
+        issuer: entry.issuer,
+        account: entry.account,
+        secret: entry.secret.replace(/\s+/g, "").toUpperCase(),
+        qr_text: entry.qr_text?.trim() || null,
+        thumb: entry.thumb?.trim() || null,
+        access_password: entry.access_password?.trim() || null,
+        created_by: ownerLooksLikeUuid ? entry.owner_id : me?.id ?? null,
+        created_at: entry.created_at,
+      },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
+  },
 };

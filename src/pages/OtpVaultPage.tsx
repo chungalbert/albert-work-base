@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SharedStoreBanner } from "../components/SharedStoreBanner";
 import { otpVaultStore } from "../lib/otpVaultStore";
 import { formatCode, generateTotp, parseOtpInput, totpRemaining } from "../lib/totp";
 import type { OtpVaultEntry } from "../lib/types";
@@ -137,15 +138,13 @@ export function OtpVaultPage({
       </header>
 
       <div className="otp-body">
-        <p className="otp-shared-banner" role="status">
-          Shared with all members — vault persists in the org store (same as projects). Open from FEATURE › Tool.
-        </p>
+        <SharedStoreBanner onMigrated={() => void refresh()} />
         {error && !showAdd && <p className="otp-error">{error}</p>}
 
         {entries.length === 0 ? (
           <div className="otp-empty">
             <h2>OTP Vault</h2>
-            <p>Store TOTP secrets locally. Codes never leave this browser. Visible to all members.</p>
+            <p>共用 TOTP 密碼庫：所有登入成員看到同一份清單（雲端 Supabase；本機模式為 org store）。</p>
             <button type="button" className="otp-add-btn" onClick={() => setShowAdd(true)}>
               + Add entry
             </button>
