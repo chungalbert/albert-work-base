@@ -2192,15 +2192,18 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .shell-pi input[type="date"],
 .shell-pi .pi-cell-input[type="date"],
 .shell-pi .pi-issue-table input[type="date"] {
-  color: var(--pi-text);
+  color: #e8eaed;
+  -webkit-text-fill-color: #e8eaed;
   color-scheme: dark;
   min-width: 9.75rem;
+  caret-color: #e8eaed;
 }
 
 .shell-pi input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
-  opacity: 0.9;
-  filter: invert(1) brightness(1.15);
+  opacity: 1;
+  /* color-scheme:dark already paints a light glyph — do not invert */
+  filter: none;
 }
 
 .shell-pi input[type="date"]::-webkit-datetime-edit,
@@ -2209,15 +2212,23 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .shell-pi input[type="date"]::-webkit-datetime-edit-year-field,
 .shell-pi input[type="date"]::-webkit-datetime-edit-month-field,
 .shell-pi input[type="date"]::-webkit-datetime-edit-day-field {
-  color: var(--pi-text);
+  color: #e8eaed;
+  -webkit-text-fill-color: #e8eaed;
 }
 
+/* Empty / incomplete date → readable muted placeholder (年/月/日) */
 .shell-pi input[type="date"]:invalid::-webkit-datetime-edit,
 .shell-pi input[type="date"]:invalid::-webkit-datetime-edit-text,
 .shell-pi input[type="date"]:invalid::-webkit-datetime-edit-year-field,
 .shell-pi input[type="date"]:invalid::-webkit-datetime-edit-month-field,
-.shell-pi input[type="date"]:invalid::-webkit-datetime-edit-day-field {
-  color: var(--pi-muted);
+.shell-pi input[type="date"]:invalid::-webkit-datetime-edit-day-field,
+.shell-pi input[type="date"]:placeholder-shown::-webkit-datetime-edit,
+.shell-pi input[type="date"]:placeholder-shown::-webkit-datetime-edit-text,
+.shell-pi input[type="date"]:placeholder-shown::-webkit-datetime-edit-year-field,
+.shell-pi input[type="date"]:placeholder-shown::-webkit-datetime-edit-month-field,
+.shell-pi input[type="date"]:placeholder-shown::-webkit-datetime-edit-day-field {
+  color: #bdc1c6;
+  -webkit-text-fill-color: #bdc1c6;
 }
 
 .pi-cell-input-name {
