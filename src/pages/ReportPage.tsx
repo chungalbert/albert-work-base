@@ -104,7 +104,7 @@ export function ReportPage() {
 
   return (
     <section>
-      <div className="page-head no-print">
+      <div className="page-head page-head-compact no-print">
         <div>
           <h1>週報</h1>
           <p>

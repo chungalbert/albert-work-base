@@ -47,7 +47,7 @@ export function ProjectsPage() {
 
   return (
     <section>
-      <div className="page-head">
+      <div className="page-head page-head-compact">
         <div>
           <h1>專案</h1>
           <p>任務屬於專案。A 專案只會看到 A 的任務，切換到 B 專案才會看到 B 的任務。專案領導可刪除自己的專案。</p>

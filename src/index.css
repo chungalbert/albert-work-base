@@ -269,11 +269,75 @@ a:hover { text-decoration: underline; }
   min-height: 100vh;
 }
 
+/* Shared compact top chrome for logged-in pages (Dashboard / Schedule / 教學). */
+.app-toolbar,
 .main-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  padding: 16px 24px 0;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 16px;
+  background: #292a2d;
+  border-bottom: 1px solid #3c4043;
+}
+
+.main-toolbar {
+  justify-content: flex-end;
+}
+
+.app-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aa0a6;
+  line-height: 1.2;
+}
+
+.app-bc-home,
+.app-bc-link {
+  border: 0;
+  background: transparent;
+  color: #9aa0a6;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.app-bc-home { display: grid; place-items: center; }
+.app-bc-home:hover,
+.app-bc-link:hover { color: #8ab4f8; }
+.app-bc-sep { color: #5f6368; }
+.app-bc-current { color: #fff; }
+
+.app-toolbar-trailing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.app-toolbar .proj-select,
+.main-toolbar .proj-select {
+  background: #1f2023;
+  border: 1px solid #3c4043;
+  color: #e8eaed;
+  border-radius: 8px;
+  padding: 5px 10px;
+  min-width: 140px;
+  font-size: 12px;
+  box-shadow: none;
 }
 
 .shell .page {
@@ -281,6 +345,10 @@ a:hover { text-decoration: underline; }
   margin: 0;
   padding: 16px 24px 40px;
   flex: 1;
+}
+
+.shell .page-shell:not(.page-pi):not(.page-personnel) {
+  padding: 0 16px 24px;
 }
 
 .shell body,
@@ -547,18 +615,41 @@ select.proj-select {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: 16px;
-  margin: 8px 0 18px;
+  gap: 12px;
+  margin: 4px 0 12px;
   flex-wrap: wrap;
 }
 
 .page-head h1 {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
-  margin: 0 0 4px;
+  margin: 0 0 2px;
 }
 
-.page-head p { margin: 0; color: var(--muted); font-size: 14px; }
+.page-head p { margin: 0; color: var(--muted); font-size: 13px; }
+
+.page-head-compact {
+  margin: 0 0 10px;
+  align-items: center;
+}
+
+.page-head-compact h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.page-head-compact p {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.page-head-compact .ww-badge {
+  padding: 4px 10px;
+}
+
+.page-head-compact .ww-badge strong {
+  font-size: 16px;
+}
 
 .ww-badge {
   display: flex;
@@ -778,9 +869,16 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   white-space: nowrap;
 }
 
-.alerts { margin-bottom: 18px; }
-.alerts h2 { margin: 0 0 8px; font-size: 14px; color: var(--accent-blue); }
-.alerts li { color: var(--muted); font-size: 14px; }
+.alerts {
+  margin: 8px 0 8px;
+  padding: 10px 12px;
+}
+
+.page-shell:not(.page-pi):not(.page-personnel) > .alerts:first-child {
+  margin-top: 8px;
+}
+.alerts h2 { margin: 0 0 6px; font-size: 13px; color: var(--accent-blue); }
+.alerts li { color: var(--muted); font-size: 13px; }
 
 .project-stack { display: grid; gap: 16px; }
 
@@ -1342,7 +1440,7 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .foot { display: none; }
 
 /* —— Dashboard —— */
-.dash { display: grid; gap: 18px; }
+.dash { display: grid; gap: 12px; }
 
 .dash-stats {
   display: grid;
@@ -2828,7 +2926,7 @@ select.pi-state {
 }
 
 @media print {
-  .sidebar, .main-toolbar, .page-head button, .alerts, .logout, .no-print { display: none !important; }
+  .sidebar, .main-toolbar, .app-toolbar, .page-head button, .alerts, .logout, .no-print { display: none !important; }
   body { background: white; color: #111; }
   .shell-main, .page { width: auto; padding: 0; }
   .report {

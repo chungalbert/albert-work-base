@@ -136,7 +136,7 @@ export function TrackerPage() {
   if (!campaign) {
     return (
       <section className="tracker-page">
-        <div className="page-head">
+        <div className="page-head page-head-compact">
           <div>
             <h1>追蹤</h1>
             <p>丟 Excel 會自動建追蹤表。之後同一份再匯入會合併，不會刪舊專案。</p>
@@ -174,7 +174,7 @@ export function TrackerPage() {
 
   return (
     <section className="tracker-page">
-      <div className="page-head">
+      <div className="page-head page-head-compact">
         <div>
           <p className="guide-kicker">追蹤</p>
           <h1>{campaign.title}</h1>

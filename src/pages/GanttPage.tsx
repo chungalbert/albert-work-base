@@ -61,8 +61,8 @@ export function GanttPage() {
   }, [tasks, user, reload, isAll, projectName, canLeadProject]);
 
   return (
-    <section>
-      <div className="page-head">
+    <section className="schedule-page">
+      <div className="page-head page-head-compact">
         <div>
           <h1>{isAll ? "全部專案甘特圖" : project ? `${project.name} 甘特圖` : "甘特圖"}</h1>
           <p>
