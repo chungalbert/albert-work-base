@@ -1,23 +1,60 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "../vendor/frappe-gantt.css";
 import { api } from "../lib/api";
-import { formatISODate, formatWW, isoWeekParts } from "../lib/dates";
+import {
+  addDaysISO,
+  formatISODate,
+  formatWW,
+  isoWeekParts,
+  parseISODate,
+  startOfWeekMonday,
+} from "../lib/dates";
 import { Gantt } from "../lib/ganttCtor";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
 
-type GanttChart = InstanceType<typeof Gantt> & { dates?: Date[] };
+type GanttChart = InstanceType<typeof Gantt> & {
+  dates?: Date[];
+  gantt_start?: Date;
+  gantt_end?: Date;
+  setup_date_values?: () => void;
+  render?: () => void;
+};
 
-function labelWeeks(root: HTMLElement, gantt: GanttChart) {
-  const currentWW = formatWW();
+/** Label each Week column as WW##; highlight the selected week. */
+function labelWeeks(root: HTMLElement, gantt: GanttChart, selectedWW: string) {
   const labels = root.querySelectorAll(".lower-text");
   (gantt.dates ?? []).forEach((date, index) => {
     const label = labels[index];
     if (!label) return;
     const ww = formatWW(formatISODate(date));
     label.textContent = ww;
-    label.classList.toggle("current-ww", ww === currentWW);
+    label.classList.toggle("current-ww", ww === selectedWW);
   });
+}
+
+/** Constrain chart to a window of weeks around the selected Monday. */
+function applyWeekWindow(gantt: GanttChart, weekStart: string, padWeeks = 3) {
+  gantt.gantt_start = parseISODate(addDaysISO(weekStart, -padWeeks * 7));
+  // Exclusive end so the last visible week column is included.
+  gantt.gantt_end = parseISODate(addDaysISO(weekStart, (padWeeks + 1) * 7));
+  gantt.setup_date_values?.();
+  gantt.render?.();
+}
+
+function scrollToWeek(root: HTMLElement, gantt: GanttChart, weekStart: string) {
+  const parent = (root.querySelector(".gantt-container") as HTMLElement | null)
+    ?? root;
+  if (!gantt.dates?.length) return;
+  const target = parseISODate(weekStart).getTime();
+  let index = gantt.dates.findIndex((date) => formatISODate(date) === weekStart);
+  if (index < 0) {
+    index = gantt.dates.findIndex((date) => Math.abs(date.getTime() - target) < 86400000);
+  }
+  if (index < 0) return;
+  // frappe-gantt Week column_width defaults to 140.
+  const columnWidth = 140;
+  parent.scrollLeft = Math.max(0, index * columnWidth - columnWidth);
 }
 
 export function GanttPage() {
@@ -25,8 +62,10 @@ export function GanttPage() {
   const { user } = useAuth();
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<GanttChart | null>(null);
-  const now = isoWeekParts();
-  const nowWW = formatWW();
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday());
+  const selected = isoWeekParts(weekStart);
+  const selectedWW = formatWW(weekStart);
+  const isCurrentWeek = weekStart === startOfWeekMonday();
 
   useEffect(() => {
     if (!host.current) return;
@@ -57,8 +96,10 @@ export function GanttPage() {
           .then(reload);
       },
     });
-    labelWeeks(host.current, chart.current);
-  }, [tasks, user, reload, isAll, projectName, canLeadProject]);
+    applyWeekWindow(chart.current, weekStart);
+    labelWeeks(host.current, chart.current, selectedWW);
+    scrollToWeek(host.current, chart.current, weekStart);
+  }, [tasks, user, reload, isAll, projectName, canLeadProject, weekStart, selectedWW]);
 
   return (
     <section className="schedule-page">
@@ -71,10 +112,28 @@ export function GanttPage() {
               : "以週為單位顯示目前專案的任務。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。"}
           </p>
         </div>
-        <div className="ww-badge" aria-label={`現在是 ${nowWW}`}>
-          <span className="ww-kicker">現在是</span>
-          <strong>{nowWW}</strong>
-          <span className="muted-label">{now.year} 年第 {now.week} 週</span>
+        <div className="ww-badge ww-badge-nav" aria-label={`${selected.year} 年第 ${selected.week} 週`}>
+          <button
+            type="button"
+            className="ghost ww-nav-btn"
+            aria-label="上一週"
+            onClick={() => setWeekStart((prev) => addDaysISO(prev, -7))}
+          >
+            ‹
+          </button>
+          <div className="ww-badge-core">
+            <span className="ww-kicker">{isCurrentWeek ? "現在是" : "週次"}</span>
+            <strong>{selectedWW}</strong>
+            <span className="muted-label">{selected.year} 年第 {selected.week} 週</span>
+          </div>
+          <button
+            type="button"
+            className="ghost ww-nav-btn"
+            aria-label="下一週"
+            onClick={() => setWeekStart((prev) => addDaysISO(prev, 7))}
+          >
+            ›
+          </button>
         </div>
       </div>
       {tasks.length === 0 ? (
