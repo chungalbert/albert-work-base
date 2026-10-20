@@ -7,6 +7,7 @@ const VIEW_CRUMB: Partial<Record<ViewId, string>> = {
   guides: "教學",
   notes: "Note",
   chat: "Chat",
+  otp: "OTP Vault",
   tasks: "Tasks",
 };
 

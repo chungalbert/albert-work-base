@@ -8,6 +8,7 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { GuidesPage } from "./pages/GuidesPage";
 import { NotesPage } from "./pages/NotesPage";
 import { ChatPage } from "./pages/ChatPage";
+import { OtpVaultPage } from "./pages/OtpVaultPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -37,6 +38,13 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "guides", label: "教學", icon: "book" },
       { id: "notes", label: "Note", icon: "note" },
       { id: "chat", label: "Chat", icon: "chat" },
+    ],
+  },
+  {
+    key: "tool",
+    label: "TOOL",
+    items: [
+      { id: "otp", label: "OTP Vault", icon: "otp" },
     ],
   },
   {
@@ -107,6 +115,13 @@ function NavIcon({ name }: { name: string }) {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       );
+    case "otp":
+      return (
+        <svg {...common}>
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      );
     case "users":
       return (
         <svg {...common}>
@@ -129,6 +144,7 @@ function Shell() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     workspace: true,
     feature: true,
+    tool: true,
     management: true,
   });
   const isLeader = Boolean(user?.is_admin || role === "leader");
@@ -147,7 +163,8 @@ function Shell() {
   const isPersonnel = currentView === "people";
   const isNotes = currentView === "notes";
   const isChat = currentView === "chat";
-  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat;
+  const isOtp = currentView === "otp";
+  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isOtp;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -155,7 +172,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}`}
     >
       <aside className="sidebar" aria-label="KSSW navigation">
         <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
@@ -254,7 +271,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}`}
         >
           {!hideChrome && currentView !== "guides" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
@@ -269,12 +286,20 @@ function Shell() {
               <GanttPage />
             </Suspense>
           )}
-          {currentView === "guides" && <GuidesPage />}
+          {currentView === "guides" && (
+            <GuidesPage onOpenOtp={() => setView("otp")} />
+          )}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />
           )}
           {currentView === "chat" && (
             <ChatPage onGoDashboard={() => setView("home")} />
+          )}
+          {currentView === "otp" && (
+            <OtpVaultPage
+              onGoDashboard={() => setView("home")}
+              ownerId={user?.username}
+            />
           )}
         </main>
       </div>

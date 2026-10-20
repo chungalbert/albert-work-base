@@ -6,7 +6,26 @@ export const TASK_STATUSES = [
   { id: "verify", label: "Verify" },
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
-export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes" | "chat";
+export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes" | "chat" | "otp";
+
+/** Client-side TOTP vault entry (secrets stay in localStorage only). */
+export interface OtpVaultEntry {
+  id: string;
+  label: string;
+  issuer: string;
+  account: string;
+  /** Base32 secret — never commit real values. */
+  secret: string;
+  /** Optional otpauth:// URI or QR payload text. */
+  qr_text?: string;
+  /** Optional data-URL thumbnail. */
+  thumb?: string;
+  owner_id?: string;
+  /** If set, codes stay locked until unlocked this session. */
+  access_password?: string;
+  /** Unix seconds or ISO — store as number when from import. */
+  created_at: number;
+}
 
 export type ChatRole = "user" | "assistant" | "system";
 
