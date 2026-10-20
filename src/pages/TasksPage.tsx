@@ -201,7 +201,7 @@ export function TasksPage() {
 
   return (
     <section className="tasks-page">
-      <div className="page-head">
+      <div className="page-head page-head-compact">
         <div>
           <h1>{isAll ? "全部專案的任務" : project ? `${project.name} 的任務` : "任務"}</h1>
           <p>

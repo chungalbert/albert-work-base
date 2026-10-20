@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsIssuesPage } from "./pages/ProjectsIssuesPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { GuidesPage } from "./pages/GuidesPage";
+import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
@@ -206,23 +207,31 @@ function Shell() {
 
       <div className="shell-main">
         {!hideChrome && (
-          <header className="main-toolbar">
-            <select
-              className="proj-select"
-              value={projectId ?? ""}
-              onChange={(e) => setProjectId(e.target.value)}
-              aria-label="Project filter"
-            >
-              {projects.length === 0 && <option value="">No projects</option>}
-              {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All Projects</option>}
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </header>
+          <AppToolbar
+            view={currentView}
+            onGoDashboard={() => setView("home")}
+            trailing={
+              currentView === "home" || currentView === "gantt" ? (
+                <select
+                  className="proj-select"
+                  value={projectId ?? ""}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  aria-label="Project filter"
+                >
+                  {projects.length === 0 && <option value="">No projects</option>}
+                  {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All Projects</option>}
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              ) : null
+            }
+          />
         )}
 
-        <main className={`page${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}`}>
+        <main
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}`}
+        >
           {!hideChrome && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (

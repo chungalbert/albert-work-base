@@ -29,7 +29,7 @@ function Blocks({ blocks }: { blocks: GuideBlock[] }) {
 function GuideArticle({ guide, onBack }: { guide: GuideDoc; onBack: () => void }) {
   return (
     <article className="guide-article">
-      <div className="page-head">
+      <div className="page-head page-head-compact">
         <div>
           <p className="guide-kicker">教學</p>
           <h1>{guide.title}</h1>
@@ -71,8 +71,8 @@ export function GuidesPage() {
   }
 
   return (
-    <section>
-      <div className="page-head">
+    <section className="guides-page">
+      <div className="page-head page-head-compact">
         <div>
           <h1>教學</h1>
           <p>專案操作手冊。先從 BIOS WHLK 開始，之後有新文件再往這裡加。</p>
