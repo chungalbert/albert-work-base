@@ -5,9 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsIssuesPage } from "./pages/ProjectsIssuesPage";
 import { PeoplePage } from "./pages/PeoplePage";
-import { ReportPage } from "./pages/ReportPage";
 import { GuidesPage } from "./pages/GuidesPage";
-import { TrackerPage } from "./pages/TrackerPage";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
@@ -33,9 +31,7 @@ const NAV_GROUPS: NavGroup[] = [
     key: "feature",
     label: "FEATURE",
     items: [
-      { id: "report", label: "Weekly report", icon: "doc" },
-      { id: "tracker", label: "Tracker", icon: "table" },
-      { id: "guides", label: "Guides", icon: "book" },
+      { id: "guides", label: "教學", icon: "book" },
     ],
   },
   {
@@ -83,20 +79,6 @@ function NavIcon({ name }: { name: string }) {
           <path d="M16 3v4M8 3v4M3 11h18" />
         </svg>
       );
-    case "doc":
-      return (
-        <svg {...common}>
-          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-          <path d="M14 3v5h5M9 13h6M9 17h6" />
-        </svg>
-      );
-    case "table":
-      return (
-        <svg {...common}>
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
-        </svg>
-      );
     case "book":
       return (
         <svg {...common}>
@@ -141,13 +123,15 @@ function Shell() {
       : view;
   const initial = (user?.display_name || user?.username || "?").trim().charAt(0).toUpperCase();
   const isProjectIssue = currentView === "projects";
+  const isPersonnel = currentView === "people";
+  const hideChrome = isProjectIssue || isPersonnel;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
-    <div className={`app shell${isProjectIssue ? " shell-pi" : ""}`}>
+    <div className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}`}>
       <aside className="sidebar" aria-label="KSSW navigation">
         <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
           <span className="sidebar-brand-name">KSSW</span>
@@ -221,7 +205,7 @@ function Shell() {
       </aside>
 
       <div className="shell-main">
-        {!isProjectIssue && (
+        {!hideChrome && (
           <header className="main-toolbar">
             <select
               className="proj-select"
@@ -238,20 +222,20 @@ function Shell() {
           </header>
         )}
 
-        <main className={`page${isProjectIssue ? " page-pi" : ""}`}>
-          {!isProjectIssue && <ReminderBanner />}
+        <main className={`page${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}`}>
+          {!hideChrome && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (
             <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
           )}
-          {currentView === "people" && <PeoplePage />}
+          {currentView === "people" && (
+            <PeoplePage onGoDashboard={() => setView("home")} />
+          )}
           {currentView === "gantt" && (
             <Suspense fallback={<p className="hint">Loading schedule…</p>}>
               <GanttPage />
             </Suspense>
           )}
-          {currentView === "report" && <ReportPage />}
-          {currentView === "tracker" && <TrackerPage />}
           {currentView === "guides" && <GuidesPage />}
         </main>
       </div>

@@ -121,7 +121,7 @@ export function ProjectsPage() {
         ) : (
           <div className="panel">
             <h2 style={{ marginTop: 0 }}>你的權限</h2>
-            <p className="hint">目前是專案成員，可看任務、甘特圖與自己的週報。人員與專案設定由領導處理。</p>
+            <p className="hint">目前是專案成員，可看任務與甘特圖。人員與專案設定由領導處理。</p>
           </div>
         )}
       </div>

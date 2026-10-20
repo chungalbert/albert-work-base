@@ -53,8 +53,8 @@ export function LoginPage() {
               <button type="button" onClick={() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" })}>Features</button>
               <button type="button" onClick={() => setShowLogin(true)}>Issues</button>
               <button type="button" onClick={() => setShowLogin(true)}>Schedule</button>
-              <button type="button" onClick={() => setShowLogin(true)}>Weekly report</button>
-              <button type="button" onClick={() => setShowLogin(true)}>Tracker</button>
+              <button type="button" onClick={() => setShowLogin(true)}>教學</button>
+              <button type="button" onClick={() => setShowLogin(true)}>Personnel</button>
             </nav>
             <div className="auth-chip">
               <span className="muted-label">Not signed in</span>
@@ -67,7 +67,7 @@ export function LoginPage() {
       <main className="page">
         <section className="hero">
           <h1>KSSW <span className="ver">V1</span></h1>
-          <p className="lead">Projects, people, issues, schedule, weekly report, and tracker — one workspace.</p>
+          <p className="lead">Projects, issues, schedule, 教學, and personnel — one KSSW workspace.</p>
         </section>
 
         <section className="tool-grid" id="tools" aria-label="Features">
@@ -91,8 +91,8 @@ export function LoginPage() {
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowLogin(true); } }}
           >
             <div className="icon-box icon-green" aria-hidden="true">▣</div>
-            <h2>Schedule &amp; Report</h2>
-            <p>Gantt scheduling, weekly reports, and BIOS/MEFW tracker in one place.</p>
+            <h2>Schedule &amp; 教學</h2>
+            <p>Gantt scheduling and onboarding guides in one place.</p>
             <span className="ok-pill">Available</span>
           </article>
         </section>

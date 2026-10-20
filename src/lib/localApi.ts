@@ -47,13 +47,44 @@ function emptyStore(): Store {
   };
 }
 
+function pruneNonAdminPeople(store: Store): Store {
+  const admins = store.profiles.filter((p) => p.is_admin);
+  if (admins.length === 0) return emptyStore();
+  const keep = new Set(admins.map((p) => p.id));
+  const profiles = admins;
+  const passwordHashes: Record<string, string> = {};
+  for (const id of keep) {
+    if (store.passwordHashes[id]) passwordHashes[id] = store.passwordHashes[id];
+  }
+  const members = (store.members ?? []).filter((m) => keep.has(m.user_id));
+  const tasks = (store.tasks ?? []).map((task) =>
+    task.assignee_id && !keep.has(task.assignee_id)
+      ? { ...task, assignee_id: admins[0]?.id ?? null }
+      : task,
+  );
+  const sessionUserId =
+    store.sessionUserId && keep.has(store.sessionUserId) ? store.sessionUserId : null;
+  return {
+    ...store,
+    profiles,
+    passwordHashes,
+    members,
+    tasks,
+    sessionUserId,
+  };
+}
+
 function load(): Store {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return emptyStore();
     const parsed = JSON.parse(raw) as Store;
     if (!parsed.profiles?.length) return emptyStore();
-    return parsed;
+    const pruned = pruneNonAdminPeople(parsed);
+    const removed = pruned.profiles.length !== parsed.profiles.length
+      || (pruned.members?.length ?? 0) !== (parsed.members?.length ?? 0);
+    if (removed) save(pruned);
+    return pruned;
   } catch {
     return emptyStore();
   }
