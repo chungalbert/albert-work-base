@@ -256,7 +256,7 @@ function Shell() {
         <main
           className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}`}
         >
-          {!hideChrome && <ReminderBanner />}
+          {!hideChrome && currentView !== "guides" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (
             <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
