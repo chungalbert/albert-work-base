@@ -112,11 +112,16 @@ export function GanttPage() {
               : "以週為單位顯示目前專案的任務。拖曳橫條改日期。專案領導可改全部；成員只能改自己的任務。"}
           </p>
         </div>
-        <div className="ww-badge ww-badge-nav" aria-label={`${selected.year} 年第 ${selected.week} 週`}>
+        <div
+          className="ww-badge ww-badge-nav"
+          role="group"
+          aria-label={`${selected.year} 年第 ${selected.week} 週`}
+        >
           <button
             type="button"
-            className="ghost ww-nav-btn"
+            className="ww-nav-btn"
             aria-label="上一週"
+            title="上一週"
             onClick={() => setWeekStart((prev) => addDaysISO(prev, -7))}
           >
             ‹
@@ -128,8 +133,9 @@ export function GanttPage() {
           </div>
           <button
             type="button"
-            className="ghost ww-nav-btn"
+            className="ww-nav-btn"
             aria-label="下一週"
+            title="下一週"
             onClick={() => setWeekStart((prev) => addDaysISO(prev, 7))}
           >
             ›
