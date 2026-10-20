@@ -18,7 +18,10 @@ import { roleLabel } from "./lib/roles";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
 
-type NavItem = { id: ViewId; label: string; icon: string };
+type NavLeaf = { id: ViewId; label: string; icon: string };
+type NavItem =
+  | (NavLeaf & { children?: undefined })
+  | { id: string; label: string; icon: string; children: NavLeaf[] };
 type NavGroup = { key: string; label: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -36,15 +39,14 @@ const NAV_GROUPS: NavGroup[] = [
     label: "FEATURE",
     items: [
       { id: "guides", label: "教學", icon: "book" },
-      { id: "notes", label: "Note", icon: "note" },
       { id: "chat", label: "Chat", icon: "chat" },
-    ],
-  },
-  {
-    key: "tool",
-    label: "TOOL",
-    items: [
-      { id: "otp", label: "OTP Vault", icon: "otp" },
+      { id: "notes", label: "Note", icon: "note" },
+      {
+        id: "tool",
+        label: "Tool",
+        icon: "tool",
+        children: [{ id: "otp", label: "OTP Vault", icon: "otp" }],
+      },
     ],
   },
   {
@@ -122,6 +124,12 @@ function NavIcon({ name }: { name: string }) {
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
       );
+    case "tool":
+      return (
+        <svg {...common}>
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+      );
     case "users":
       return (
         <svg {...common}>
@@ -144,10 +152,13 @@ function Shell() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     workspace: true,
     feature: true,
-    tool: true,
     management: true,
   });
+  const [openNavFolders, setOpenNavFolders] = useState<Record<string, boolean>>({
+    tool: true,
+  });
   const isLeader = Boolean(user?.is_admin || role === "leader");
+  // Only Personnel is leader-gated. FEATURE peers (incl. Tool › OTP Vault, Note) stay for everyone.
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: isLeader ? group.items : group.items.filter((item) => item.id !== "people"),
@@ -168,6 +179,10 @@ function Shell() {
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleNavFolder = (key: string) => {
+    setOpenNavFolders((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -195,18 +210,54 @@ function Shell() {
                 </button>
                 {open && (
                   <ul>
-                    {group.items.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          className={currentView === item.id ? "on" : ""}
-                          onClick={() => setView(item.id)}
-                        >
-                          <NavIcon name={item.icon} />
-                          <span>{item.label}</span>
-                        </button>
-                      </li>
-                    ))}
+                    {group.items.map((item) => {
+                      if (item.children?.length) {
+                        const folderOpen = openNavFolders[item.id] !== false;
+                        const childActive = item.children.some((c) => c.id === currentView);
+                        return (
+                          <li key={item.id} className="nav-folder">
+                            <button
+                              type="button"
+                              className={`nav-folder-toggle${childActive ? " on" : ""}`}
+                              onClick={() => toggleNavFolder(item.id)}
+                              aria-expanded={folderOpen}
+                            >
+                              <NavIcon name={item.icon} />
+                              <span>{item.label}</span>
+                              <span className={`chev ${folderOpen ? "open" : ""}`} aria-hidden="true">▾</span>
+                            </button>
+                            {folderOpen && (
+                              <ul className="nav-sub">
+                                {item.children.map((child) => (
+                                  <li key={child.id}>
+                                    <button
+                                      type="button"
+                                      className={currentView === child.id ? "on" : ""}
+                                      onClick={() => setView(child.id)}
+                                    >
+                                      <NavIcon name={child.icon} />
+                                      <span>{child.label}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className={currentView === item.id ? "on" : ""}
+                            onClick={() => setView(item.id as ViewId)}
+                          >
+                            <NavIcon name={item.icon} />
+                            <span>{item.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -286,9 +337,7 @@ function Shell() {
               <GanttPage />
             </Suspense>
           )}
-          {currentView === "guides" && (
-            <GuidesPage onOpenOtp={() => setView("otp")} />
-          )}
+          {currentView === "guides" && <GuidesPage />}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />
           )}

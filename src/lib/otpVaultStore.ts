@@ -1,5 +1,10 @@
 import type { OtpVaultEntry } from "./types";
 
+/**
+ * Shared TOTP vault for every logged-in user on this browser.
+ * list() returns the full vault — no admin / owner / role filtering.
+ * Optional per-entry access_password only locks viewing that entry’s codes.
+ */
 const KEY = "awb-otp-vault-v1";
 
 interface VaultState {

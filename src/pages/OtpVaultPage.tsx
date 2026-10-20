@@ -135,12 +135,15 @@ export function OtpVaultPage({
       </header>
 
       <div className="otp-body">
+        <p className="otp-shared-banner" role="status">
+          Shared with all members — every logged-in user can open Tool › OTP Vault and see entries.
+        </p>
         {error && !showAdd && <p className="otp-error">{error}</p>}
 
         {entries.length === 0 ? (
           <div className="otp-empty">
             <h2>OTP Vault</h2>
-            <p>Store TOTP secrets locally. Codes never leave this browser.</p>
+            <p>Store TOTP secrets locally. Codes never leave this browser. Visible to all members.</p>
             <button type="button" className="otp-add-btn" onClick={() => setShowAdd(true)}>
               + Add entry
             </button>

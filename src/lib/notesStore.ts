@@ -1,5 +1,9 @@
 import { NOTE_COLORS, type NoteColor, type NoteItem } from "./types";
 
+/**
+ * Shared sticky notes for every logged-in user on this browser.
+ * No owner / role filtering — list() returns the full vault to all members.
+ */
 const KEY = "awb-notes-v1";
 
 export type NoteInput = {

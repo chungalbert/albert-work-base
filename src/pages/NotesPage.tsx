@@ -143,6 +143,10 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
 
       {error && <p className="note-error">{error}</p>}
 
+      <p className="note-shared-banner" role="status">
+        Shared with all members — every logged-in user can see these notes.
+      </p>
+
       <div className="note-grid">
         {filtered.length === 0 ? (
           <p className="note-empty">
