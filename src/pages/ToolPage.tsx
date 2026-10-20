@@ -10,7 +10,7 @@ export function ToolPage({ onOpenOtp }: { onOpenOtp?: () => void }) {
       <div className="guide-list">
         <button className="panel guide-card" type="button" onClick={() => onOpenOtp?.()}>
           <h2>OTP Vault</h2>
-          <p>本機 TOTP 密碼庫：即時六位數驗證碼、倒數與複製。密鑰只存在瀏覽器，所有成員可見。</p>
+          <p>共用 TOTP 密碼庫：即時六位數驗證碼、倒數與複製。所有登入成員可見（與專案同一套共用儲存）。</p>
           <span className="ok-pill">開啟</span>
         </button>
       </div>
