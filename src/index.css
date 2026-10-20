@@ -2150,7 +2150,7 @@ select.pi-state {
 }
 
 .shell-personnel .page-personnel {
-  padding: 0 0 32px;
+  padding: 0;
 }
 
 .shell-personnel .nav-group li button.on {
@@ -2533,18 +2533,19 @@ select.pi-state {
 .personnel-check:hover { background: rgba(255, 255, 255, 0.06); }
 
 .personnel-error {
-  margin: 8px 16px 0;
+  margin: 0;
+  padding: 8px 16px;
   color: #f28b82;
   font-size: 13px;
 }
 
 .personnel-table-wrap {
-  margin: 8px 16px 0;
+  margin: 0;
   background: var(--per-panel);
-  border: 1px solid var(--per-line);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   overflow: auto;
-  max-height: calc(100vh - 72px);
+  max-height: calc(100vh - 44px);
 }
 
 .personnel-table {
