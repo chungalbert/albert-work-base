@@ -3,9 +3,8 @@ import { useAuth } from "./context/AuthContext";
 import { StoreProvider, useStore } from "./context/StoreContext";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { ProjectsPage } from "./pages/ProjectsPage";
+import { ProjectsIssuesPage } from "./pages/ProjectsIssuesPage";
 import { PeoplePage } from "./pages/PeoplePage";
-import { TasksPage } from "./pages/TasksPage";
 import { ReportPage } from "./pages/ReportPage";
 import { GuidesPage } from "./pages/GuidesPage";
 import { TrackerPage } from "./pages/TrackerPage";
@@ -26,8 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "WORKSPACE",
     items: [
       { id: "home", label: "Dashboard", icon: "grid" },
-      { id: "projects", label: "Projects", icon: "folder" },
-      { id: "tasks", label: "Issues", icon: "list" },
+      { id: "projects", label: "Projects & Issues", icon: "folder" },
       { id: "gantt", label: "Project schedule", icon: "calendar" },
     ],
   },
@@ -74,13 +72,8 @@ function NavIcon({ name }: { name: string }) {
     case "folder":
       return (
         <svg {...common}>
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-        </svg>
-      );
-    case "list":
-      return (
-        <svg {...common}>
-          <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+          <path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+          <rect x="2" y="6" width="20" height="14" rx="2" />
         </svg>
       );
     case "calendar":
@@ -141,17 +134,22 @@ function Shell() {
     items: isLeader ? group.items : group.items.filter((item) => item.id !== "people"),
   })).filter((group) => group.items.length > 0);
 
-  const currentView = !isLeader && view === "people" ? "home" : view;
+  const currentView = !isLeader && view === "people"
+    ? "home"
+    : view === "tasks"
+      ? "projects"
+      : view;
   const initial = (user?.display_name || user?.username || "?").trim().charAt(0).toUpperCase();
+  const isProjectIssue = currentView === "projects";
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
-    <div className="app shell">
+    <div className={`app shell${isProjectIssue ? " shell-pi" : ""}`}>
       <aside className="sidebar" aria-label="KSSW navigation">
-        <a className="sidebar-brand" href="./">
+        <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
           <span className="sidebar-brand-name">KSSW</span>
         </a>
 
@@ -223,27 +221,30 @@ function Shell() {
       </aside>
 
       <div className="shell-main">
-        <header className="main-toolbar">
-          <select
-            className="proj-select"
-            value={projectId ?? ""}
-            onChange={(e) => setProjectId(e.target.value)}
-            aria-label="Project filter"
-          >
-            {projects.length === 0 && <option value="">No projects</option>}
-            {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All Projects</option>}
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </header>
+        {!isProjectIssue && (
+          <header className="main-toolbar">
+            <select
+              className="proj-select"
+              value={projectId ?? ""}
+              onChange={(e) => setProjectId(e.target.value)}
+              aria-label="Project filter"
+            >
+              {projects.length === 0 && <option value="">No projects</option>}
+              {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All Projects</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </header>
+        )}
 
-        <main className="page">
-          <ReminderBanner />
+        <main className={`page${isProjectIssue ? " page-pi" : ""}`}>
+          {!isProjectIssue && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
-          {currentView === "projects" && <ProjectsPage />}
+          {currentView === "projects" && (
+            <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
+          )}
           {currentView === "people" && <PeoplePage />}
-          {currentView === "tasks" && <TasksPage />}
           {currentView === "gantt" && (
             <Suspense fallback={<p className="hint">Loading schedule…</p>}>
               <GanttPage />
