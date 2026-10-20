@@ -2480,6 +2480,7 @@ select.pi-state {
   flex-wrap: wrap;
 }
 
+.save-status,
 .personnel-save-status {
   display: inline-flex;
   align-items: center;
@@ -2495,20 +2496,25 @@ select.pi-state {
   white-space: nowrap;
 }
 
+.save-status.is-saved,
 .personnel-save-status.is-saved {
   background: #2f3640;
   color: #aeb6c2;
 }
 
+.save-status-spinner,
 .personnel-save-spinner {
   width: 12px;
   height: 12px;
   border: 1.5px solid rgba(197, 205, 216, 0.25);
   border-top-color: #e8eaed;
   border-radius: 50%;
-  animation: personnel-spin 0.7s linear infinite;
+  animation: save-status-spin 0.7s linear infinite;
 }
 
+@keyframes save-status-spin {
+  to { transform: rotate(360deg); }
+}
 @keyframes personnel-spin {
   to { transform: rotate(360deg); }
 }
@@ -3067,6 +3073,7 @@ select.pi-state {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 8px;
 }
 
 .note-add-btn {
@@ -3115,6 +3122,12 @@ select.pi-state {
   color: #92400e;
 }
 .shared-store-banner p { margin: 0; line-height: 1.45; }
+.shared-store-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .shared-store-banner .btn { align-self: flex-start; }
 .shared-store-banner-info { color: inherit; opacity: 0.9; }
 .otp-body .shared-store-banner { margin-bottom: 14px; }
@@ -3197,8 +3210,31 @@ select.pi-state {
 
 .note-icon-btn:hover { background: rgba(0, 0, 0, 0.08); opacity: 1; }
 .note-icon-btn.on { color: #1d4ed8; opacity: 1; }
+.note-icon-btn.copied {
+  width: auto;
+  min-width: 28px;
+  padding: 0 8px;
+  color: #166534;
+  background: rgba(22, 101, 52, 0.12);
+  opacity: 1;
+}
+.note-copied-label {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .note-icon-btn.danger:hover { color: #b91c1c; }
 .note-icon-btn:disabled { opacity: 0.28; cursor: not-allowed; }
+
+.note-toast {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #166534;
+  background: rgba(22, 101, 52, 0.12);
+  border-bottom: 1px solid rgba(22, 101, 52, 0.2);
+}
 
 .note-card-body {
   margin: 0;
@@ -3772,6 +3808,13 @@ select.pi-state {
 .otp-bc-link:hover { color: var(--otp-link); }
 .otp-bc-sep { color: #5f6368; }
 .otp-bc-current { color: #fff; }
+
+.otp-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 .otp-add-btn {
   border: 1px solid var(--otp-line);

@@ -1,8 +1,11 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { SavingIndicator } from "../components/SavingIndicator";
 import { SharedStoreBanner } from "../components/SharedStoreBanner";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { otpVaultStore } from "../lib/otpVaultStore";
 import { formatCode, generateTotp, parseOtpInput, totpRemaining } from "../lib/totp";
 import type { OtpVaultEntry } from "../lib/types";
+import { useSaveStatus } from "../lib/useSaveStatus";
 
 type AddForm = {
   paste: string;
@@ -36,6 +39,7 @@ export function OtpVaultPage({
   /** Session unlocks: entryId → true after correct access_password. */
   const [unlocked, setUnlocked] = useState<Record<string, boolean>>({});
   const [unlockDraft, setUnlockDraft] = useState<Record<string, string>>({});
+  const { saveStatus, runSave } = useSaveStatus();
 
   const refresh = async () => {
     setEntries(await otpVaultStore.list());
@@ -56,19 +60,21 @@ export function OtpVaultPage({
     event.preventDefault();
     setError("");
     try {
-      const parsed = parseOtpInput(form.paste);
-      await otpVaultStore.add({
-        secret: parsed.secret,
-        qr_text: parsed.qr_text,
-        issuer: form.issuer.trim() || parsed.issuer,
-        account: form.account.trim() || parsed.account,
-        label: form.label.trim() || parsed.label,
-        access_password: form.access_password.trim() || undefined,
-        owner_id: ownerId,
+      await runSave(async () => {
+        const parsed = parseOtpInput(form.paste);
+        await otpVaultStore.add({
+          secret: parsed.secret,
+          qr_text: parsed.qr_text,
+          issuer: form.issuer.trim() || parsed.issuer,
+          account: form.account.trim() || parsed.account,
+          label: form.label.trim() || parsed.label,
+          access_password: form.access_password.trim() || undefined,
+          owner_id: ownerId,
+        });
+        setForm(EMPTY_FORM);
+        setShowAdd(false);
+        await refresh();
       });
-      setForm(EMPTY_FORM);
-      setShowAdd(false);
-      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add entry");
     }
@@ -77,22 +83,32 @@ export function OtpVaultPage({
   const onDelete = async (id: string) => {
     const ok = window.confirm("Delete this OTP entry?");
     if (!ok) return;
-    await otpVaultStore.remove(id);
-    setUnlocked((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    await refresh();
+    setError("");
+    try {
+      await runSave(async () => {
+        await otpVaultStore.remove(id);
+        setUnlocked((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        await refresh();
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
   };
 
-  const onCopy = async (id: string, code: string) => {
+  const onCopy = async (id: string, code: string, event?: MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
     try {
-      await navigator.clipboard.writeText(code.replace(/\s/g, ""));
+      await copyTextToClipboard(code.replace(/\s/g, ""));
+      setError("");
       setCopiedId(id);
       window.setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
     } catch {
-      setError("Clipboard copy failed");
+      setError("Clipboard copy failed — 無法複製到剪貼簿");
     }
   };
 
@@ -131,6 +147,7 @@ export function OtpVaultPage({
           <span className="otp-bc-current">OTP Vault</span>
         </nav>
         <div className="otp-toolbar-actions">
+          <SavingIndicator status={saveStatus} />
           <button type="button" className="otp-add-btn" onClick={() => { setShowAdd(true); setError(""); }}>
             + Add
           </button>
@@ -226,9 +243,9 @@ export function OtpVaultPage({
                           type="button"
                           className="otp-copy-btn"
                           disabled={Boolean(genError)}
-                          onClick={() => void onCopy(entry.id, codeRaw)}
+                          onClick={(e) => void onCopy(entry.id, codeRaw, e)}
                         >
-                          {copiedId === entry.id ? "Copied" : "Copy"}
+                          {copiedId === entry.id ? "已複製" : "Copy"}
                         </button>
                       </div>
                     )}
