@@ -870,8 +870,12 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 }
 
 .alerts {
-  margin: 0 0 10px;
-  padding: 12px 14px;
+  margin: 8px 0 8px;
+  padding: 10px 12px;
+}
+
+.page-shell:not(.page-pi):not(.page-personnel) > .alerts:first-child {
+  margin-top: 8px;
 }
 .alerts h2 { margin: 0 0 6px; font-size: 13px; color: var(--accent-blue); }
 .alerts li { color: var(--muted); font-size: 13px; }
