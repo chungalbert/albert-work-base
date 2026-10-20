@@ -6,7 +6,22 @@ export const TASK_STATUSES = [
   { id: "verify", label: "Verify" },
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number]["id"];
-export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides";
+export type ViewId = "home" | "projects" | "people" | "tasks" | "gantt" | "guides" | "notes";
+
+export const NOTE_COLORS = ["blue", "purple", "green", "yellow", "pink", "orange"] as const;
+export type NoteColor = (typeof NOTE_COLORS)[number];
+
+export interface NoteItem {
+  id: string;
+  title: string;
+  body: string;
+  color: NoteColor;
+  pinned: boolean;
+  /** Optional link opened by the globe action. */
+  url?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export function taskStatusLabel(status: string): string {
   return TASK_STATUSES.find((item) => item.id === status)?.label ?? status;
