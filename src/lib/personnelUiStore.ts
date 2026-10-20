@@ -1,4 +1,4 @@
-import type { PersonnelColumn, PersonnelRole, Profile } from "./types";
+import type { PersonnelColumn, PersonnelRole, Profile, ProjectMember } from "./types";
 import { normalizePersonnelRole } from "./types";
 
 const KEY = "awb-personnel-ui-v1";
@@ -9,15 +9,18 @@ interface PersonOverlay {
   email?: string;
   personnel_role?: PersonnelRole;
   custom?: Record<string, string>;
+  projectIds?: string[];
 }
 
 interface PersonnelUiState {
   columns: PersonnelColumn[];
   overlays: Record<string, PersonOverlay>;
+  /** Client-created members when cloud invite is unavailable. */
+  extraMembers: Profile[];
 }
 
 function empty(): PersonnelUiState {
-  return { columns: [], overlays: {} };
+  return { columns: [], overlays: {}, extraMembers: [] };
 }
 
 function load(): PersonnelUiState {
@@ -28,6 +31,7 @@ function load(): PersonnelUiState {
     return {
       columns: Array.isArray(parsed.columns) ? parsed.columns : [],
       overlays: parsed.overlays && typeof parsed.overlays === "object" ? parsed.overlays : {},
+      extraMembers: Array.isArray(parsed.extraMembers) ? parsed.extraMembers : [],
     };
   } catch {
     return empty();
@@ -99,6 +103,7 @@ export const personnelUiStore = {
       email?: string;
       personnel_role?: PersonnelRole;
       custom?: Record<string, string>;
+      projectIds?: string[];
     },
   ): Profile {
     const state = load();
@@ -122,9 +127,80 @@ export const personnelUiStore = {
     if (patch.custom !== undefined) {
       nextOverlay.custom = { ...(prev.custom ?? {}), ...patch.custom };
     }
+    if (patch.projectIds !== undefined) {
+      nextOverlay.projectIds = [...patch.projectIds];
+    }
 
     state.overlays[userId] = nextOverlay;
+    // Keep extra member record in sync when present.
+    const extraIdx = state.extraMembers.findIndex((p) => p.id === userId);
+    if (extraIdx >= 0) {
+      state.extraMembers[extraIdx] = {
+        ...state.extraMembers[extraIdx],
+        display_name: nextOverlay.display_name ?? state.extraMembers[extraIdx].display_name,
+        unit: nextOverlay.unit ?? state.extraMembers[extraIdx].unit,
+        email: nextOverlay.email ?? state.extraMembers[extraIdx].email,
+        personnel_role: nextOverlay.personnel_role ?? state.extraMembers[extraIdx].personnel_role,
+        custom: { ...(state.extraMembers[extraIdx].custom ?? {}), ...(nextOverlay.custom ?? {}) },
+        is_admin: (nextOverlay.personnel_role ?? state.extraMembers[extraIdx].personnel_role) === "Admin",
+      };
+    }
     save(state);
     return personnelUiStore.mergeProfile({ ...base, ...nextOverlay, custom: { ...(base.custom ?? {}), ...(nextOverlay.custom ?? {}) } });
+  },
+
+  listExtraMembers(): Profile[] {
+    return load().extraMembers.map((p) => personnelUiStore.mergeProfile(p));
+  },
+
+  addExtraMember(profile: Profile, projectIds: string[] = []): Profile {
+    const state = load();
+    const normalized = {
+      ...profile,
+      personnel_role: normalizePersonnelRole(profile),
+      is_admin: normalizePersonnelRole(profile) === "Admin",
+      custom: profile.custom ?? {},
+    };
+    state.extraMembers = state.extraMembers.filter(
+      (p) => p.id !== normalized.id && p.email.toLowerCase() !== normalized.email.toLowerCase(),
+    );
+    state.extraMembers.push(normalized);
+    state.overlays[normalized.id] = {
+      ...(state.overlays[normalized.id] ?? {}),
+      display_name: normalized.display_name,
+      unit: normalized.unit,
+      email: normalized.email,
+      personnel_role: normalized.personnel_role,
+      custom: normalized.custom,
+      projectIds,
+    };
+    save(state);
+    return personnelUiStore.mergeProfile(normalized);
+  },
+
+  removeExtraMember(userId: string) {
+    const state = load();
+    state.extraMembers = state.extraMembers.filter((p) => p.id !== userId);
+    delete state.overlays[userId];
+    save(state);
+  },
+
+  listExtraMemberships(): ProjectMember[] {
+    const state = load();
+    const rows: ProjectMember[] = [];
+    for (const profile of state.extraMembers) {
+      const ids = state.overlays[profile.id]?.projectIds ?? [];
+      for (const projectId of ids) {
+        rows.push({ project_id: projectId, user_id: profile.id, role: "member" });
+      }
+    }
+    return rows;
+  },
+
+  setExtraProjectIds(userId: string, projectIds: string[]) {
+    const state = load();
+    const prev = state.overlays[userId] ?? {};
+    state.overlays[userId] = { ...prev, projectIds: [...projectIds] };
+    save(state);
   },
 };
