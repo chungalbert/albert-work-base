@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import {
   addAnalyzedNote,
@@ -117,6 +118,8 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     leaderProjectIds,
     canLeadProject,
     members,
+    initialLoading,
+    loadError,
   } = useStore();
 
   const [mode, setMode] = useState<"list" | "detail">("list");
@@ -129,12 +132,15 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [removeColId, setRemoveColId] = useState("");
   /** Managed middle + custom columns (everything except Compal name + Actions). */
   const [managedColumns, setManagedColumns] = useState<ProjectColumn[]>([]);
+  const [columnsLoading, setColumnsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const { saveStatus, runSave } = useSaveStatus();
+  const listLoading = initialLoading || columnsLoading;
+  const displayError = error || loadError;
 
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState(user?.id ?? "");
@@ -153,10 +159,13 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
       setManagedColumns(await api.listProjectColumns());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load columns failed");
+    } finally {
+      setColumnsLoading(false);
     }
   };
 
   useEffect(() => {
+    setColumnsLoading(true);
     void refreshProjectColumns();
   }, []);
 
@@ -424,7 +433,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         </div>
 
         <div className="pi-actions">
-          <SavingIndicator status={saveStatus} />
+          <div className="pi-status-slot">
+            {listLoading ? <LoadingIndicator /> : <SavingIndicator status={saveStatus} />}
+          </div>
           {canManageColumns && (
             <div className="pi-add-col-wrap">
               <button
@@ -586,7 +597,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         </div>
       </header>
 
-      {error && <p className="pi-error">{error}</p>}
+      {displayError && <p className="pi-error">{displayError}</p>}
 
       {mode === "list" && showCreate && canCreate && (
         <form className="pi-create-card" onSubmit={onCreateProject}>
@@ -626,7 +637,13 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
               {projectRows.length === 0 ? (
                 <tr>
                   <td colSpan={listColSpan} className="pi-empty">
-                    {projects.length === 0 ? "No projects yet. Use More → New Project." : "No projects match this search."}
+                    {listLoading
+                      ? "\u00a0"
+                      : loadError
+                        ? "Failed to load projects."
+                        : projects.length === 0
+                          ? "No projects yet. Use More → New Project."
+                          : "No projects match this search."}
                   </td>
                 </tr>
               ) : (

@@ -2544,6 +2544,12 @@ select.pi-state {
   flex-wrap: wrap;
 }
 
+.pi-status-slot {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+}
+
 .save-status,
 .personnel-save-status {
   display: inline-flex;

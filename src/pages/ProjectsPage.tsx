@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { LoadingIndicator } from "../components/LoadingIndicator";
 import { api } from "../lib/api";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
@@ -7,12 +8,24 @@ import { taskStatusLabel } from "../lib/types";
 
 export function ProjectsPage() {
   const { user } = useAuth();
-  const { projects, setProjectId, projectId, reload, role, allTasks, profiles, leaderProjectIds } = useStore();
+  const {
+    projects,
+    setProjectId,
+    projectId,
+    reload,
+    role,
+    allTasks,
+    profiles,
+    leaderProjectIds,
+    initialLoading,
+    loadError,
+  } = useStore();
   const canCreate = Boolean(user?.is_admin || role === "leader");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const displayError = error || loadError;
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,12 +65,15 @@ export function ProjectsPage() {
           <h1>專案</h1>
           <p>任務屬於專案。A 專案只會看到 A 的任務，切換到 B 專案才會看到 B 的任務。專案領導可刪除自己的專案。</p>
         </div>
+        {initialLoading && <LoadingIndicator />}
       </div>
 
-      {error && <p className="error">{error}</p>}
+      {displayError && <p className="error">{displayError}</p>}
 
       <div className="project-stack">
-        {projects.length === 0 && <p className="hint">還沒有專案，先新增一個。</p>}
+        {projects.length === 0 && !initialLoading && !loadError && (
+          <p className="hint">還沒有專案，先新增一個。</p>
+        )}
         {projects.map((project) => {
           const nested = allTasks.filter((task) => task.project_id === project.id);
           const current = project.id === projectId;
