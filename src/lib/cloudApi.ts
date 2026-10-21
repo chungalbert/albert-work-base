@@ -27,8 +27,29 @@ function normalizeTask(task: Task): Task {
 
 function sb() {
   const client = getSupabase();
-  if (!client) throw new Error("尚未設定 Supabase");
+  if (!client) throw new Error("尚未設定 Supabase 或 Neon");
   return client;
+}
+
+async function ensureOwnProfile(): Promise<Profile | null> {
+  const existing = await cloudApi.currentUser();
+  if (existing) return existing;
+  const client = sb();
+  const { data: session } = await client.auth.getSession();
+  const user = session.session?.user;
+  if (!user?.id || !user.email) return null;
+  const meta = (user.user_metadata ?? {}) as { username?: string; display_name?: string; unit?: string };
+  const username = (meta.username || user.email.split("@")[0] || "user").slice(0, 24);
+  const { error } = await client.from("profiles").insert({
+    id: user.id,
+    username,
+    display_name: meta.display_name || username,
+    email: user.email,
+    unit: meta.unit || "",
+    is_admin: false,
+  });
+  if (error && !/duplicate|already exists|unique/i.test(error.message)) throw error;
+  return cloudApi.currentUser();
 }
 
 export const cloudApi = {
@@ -49,7 +70,7 @@ export const cloudApi = {
       if (isTransportFailure(error)) throw new Error(NETWORK_MESSAGE);
       throw new Error(error.message === "Invalid login credentials" ? "帳號或密碼不正確。" : error.message);
     }
-    const profile = await cloudApi.currentUser();
+    const profile = await ensureOwnProfile();
     if (!profile) throw new Error("找不到個人資料");
     return profile;
   },
@@ -87,7 +108,7 @@ export const cloudApi = {
       if (signedIn.error) throw new Error(signedIn.error.message);
     }
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const profile = await cloudApi.currentUser();
+      const profile = await ensureOwnProfile();
       if (profile) return profile;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }

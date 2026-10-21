@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
+  /** https://ep-....neon.tech/dbname — no user, password, or query string. */
+  readonly VITE_NEON_URL?: string;
 }
 
 interface ImportMeta {

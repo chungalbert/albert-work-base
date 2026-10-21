@@ -31,9 +31,9 @@ import {
 export const isCloud = hasSupabaseConfig;
 
 /**
- * Cloud mode: always use Supabase shared tables (all authenticated users).
+ * Cloud mode: Neon Auth+Data API (VITE_NEON_URL) or legacy Supabase.
  * Never sticky-fall-back to per-browser localStorage — that siloed Admin vs Lay_Zhang (#35).
- * Local-only builds (no VITE_SUPABASE_*) still use awb-store-v1.
+ * Local-only builds (no VITE_NEON_URL / VITE_SUPABASE_*) still use awb-store-v1.
  * Reads may surface local leftovers only while tables are missing (with UI banner).
  * Writes in cloud mode require tables; otherwise throw apply-migration guidance.
  */

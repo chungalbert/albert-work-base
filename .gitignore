@@ -10,3 +10,6 @@ dist/
 *.tsbuildinfo
 .npm-cache/
 _extract/
+api/.wrangler/
+api/dist/
+.wrangler/

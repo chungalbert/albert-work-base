@@ -1,7 +1,16 @@
-export function hasSupabaseConfig(): boolean {
+export function hasNeonConfig(): boolean {
+  return Boolean(import.meta.env.VITE_NEON_URL);
+}
+
+export function hasSupabaseCredentials(): boolean {
   return Boolean(
     import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY,
   );
+}
+
+/** Cloud mode. On this branch a Neon URL takes the place of Supabase. */
+export function hasSupabaseConfig(): boolean {
+  return hasNeonConfig() || hasSupabaseCredentials();
 }
 
 export function usernameFromEmail(email: string, taken: Set<string>): string {
