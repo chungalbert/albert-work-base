@@ -88,14 +88,30 @@ create policy projects_select_column_meta on public.projects
   for select to authenticated
   using (name = '__kssw_meta__');
 
--- Seed meta row (stable id). Prefer first admin as created_by; else any profile.
+-- Seed meta row (stable id) with default removable middle columns.
+-- Only COMPAL PROJECT NAME + ACTIONS stay fixed in the app; these defs are Admin-managed.
+-- Prefer first admin as created_by; else any profile.
 insert into public.projects (id, name, description, created_by, custom)
 select
   '00000000-0000-4000-8000-0000000000c1'::uuid,
   '__kssw_meta__',
   'System: shared project column definitions',
   p.id,
-  jsonb_build_object('__kssw_column_defs', '[]')
+  jsonb_build_object(
+    '__kssw_column_defs',
+    '[
+      {"id":"00000000-0000-4000-8000-0000000000d1","label":"LENOVO PROJECT NAME","sort_order":0},
+      {"id":"00000000-0000-4000-8000-0000000000d2","label":"BIOS ID","sort_order":1},
+      {"id":"00000000-0000-4000-8000-0000000000d3","label":"PLATFORM","sort_order":2},
+      {"id":"00000000-0000-4000-8000-0000000000d4","label":"DIS","sort_order":3},
+      {"id":"00000000-0000-4000-8000-0000000000d5","label":"SS DATE","sort_order":4},
+      {"id":"00000000-0000-4000-8000-0000000000d6","label":"EOL DATE","sort_order":5},
+      {"id":"00000000-0000-4000-8000-0000000000d7","label":"SECURITY UPDATE","sort_order":6},
+      {"id":"00000000-0000-4000-8000-0000000000d8","label":"TALENT POLICY","sort_order":7},
+      {"id":"00000000-0000-4000-8000-0000000000d9","label":"OWNER","sort_order":8}
+    ]',
+    '__kssw_columns_seeded', '1'
+  )
 from (
   select id from public.profiles where is_admin order by created_at asc limit 1
 ) p

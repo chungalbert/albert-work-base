@@ -135,7 +135,7 @@ export interface Project {
   eol_date?: string;
   security_update?: string;
   talent_policy?: string;
-  /** Project owner (built-in column; not removable). */
+  /** Project owner (standard middle column; removable via Admin column defs). */
   owner?: string;
   /** Values for user-defined Projects columns. */
   custom?: Record<string, string>;

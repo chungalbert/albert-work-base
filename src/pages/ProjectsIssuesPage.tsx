@@ -9,7 +9,12 @@ import {
 } from "../lib/analyzed";
 import { api } from "../lib/api";
 import { addDaysISO, todayISO } from "../lib/dates";
-import { PROJECT_BUILTIN_COLUMNS, type ProjectBuiltinKey } from "../lib/projectsUiStore";
+import {
+  isStandardProjectColumnId,
+  PROJECT_LOCKED_COLUMN,
+  standardKeyForColumn,
+  type ProjectStandardKey,
+} from "../lib/projectsUiStore";
 import {
   isTaskOpen,
   TASK_STATUSES,
@@ -122,7 +127,8 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [removeColOpen, setRemoveColOpen] = useState(false);
   const [newColLabel, setNewColLabel] = useState("");
   const [removeColId, setRemoveColId] = useState("");
-  const [extraColumns, setExtraColumns] = useState<ProjectColumn[]>([]);
+  /** Managed middle + custom columns (everything except Compal name + Actions). */
+  const [managedColumns, setManagedColumns] = useState<ProjectColumn[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -144,7 +150,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
   const refreshProjectColumns = async () => {
     try {
-      setExtraColumns(await api.listProjectColumns());
+      setManagedColumns(await api.listProjectColumns());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load columns failed");
     }
@@ -181,8 +187,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     });
   }, [projects, query]);
 
-  const builtinValue = (project: Project, key: ProjectBuiltinKey): string => {
-    if (key === "compal_name") return project.name ?? "";
+  const standardFieldValue = (project: Project, key: ProjectStandardKey): string => {
     return (project[key] as string | undefined) ?? "";
   };
 
@@ -226,12 +231,17 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
       setError("只有管理員可以刪除欄位");
       return;
     }
-    const col = extraColumns.find((c) => c.id === removeColId);
+    const col = managedColumns.find((c) => c.id === removeColId);
     if (!col) {
       setError("請選擇要刪除的欄位");
       return;
     }
-    const ok = window.confirm(`Remove column “${col.label}”? Values will be deleted.`);
+    const keepValues = isStandardProjectColumnId(col.id);
+    const ok = window.confirm(
+      keepValues
+        ? `Remove column “${col.label}”? You can re-add it later; existing cell values are kept.`
+        : `Remove column “${col.label}”? Values will be deleted.`,
+    );
     if (!ok) return;
     setError("");
     try {
@@ -248,7 +258,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     }
   };
 
-  const listColSpan = PROJECT_BUILTIN_COLUMNS.length + extraColumns.length + 1;
+  const listColSpan = 1 + managedColumns.length + 1;
 
   const detailTasks = useMemo(() => {
     if (!project) return [] as Task[];
@@ -436,7 +446,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     <input
                       value={newColLabel}
                       onChange={(e) => setNewColLabel(e.target.value)}
-                      placeholder="e.g. Region"
+                      placeholder="e.g. Region or BIOS ID"
                       autoFocus
                     />
                   </label>
@@ -489,24 +499,24 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   <button
                     type="button"
                     className="danger"
-                    disabled={extraColumns.length === 0}
-                    aria-disabled={extraColumns.length === 0}
+                    disabled={managedColumns.length === 0}
+                    aria-disabled={managedColumns.length === 0}
                     title={
-                      extraColumns.length === 0
-                        ? "No custom columns to remove. Add one with + ADD COLUMN first."
-                        : "Remove a custom column"
+                      managedColumns.length === 0
+                        ? "No removable columns. Add one with + ADD COLUMN first."
+                        : "Remove a column (Compal name and Actions stay fixed)"
                     }
                     onClick={() => {
-                      if (extraColumns.length === 0) return;
+                      if (managedColumns.length === 0) return;
                       setMoreOpen(false);
                       setAddColOpen(false);
-                      setRemoveColId(extraColumns[0]?.id ?? "");
+                      setRemoveColId(managedColumns[0]?.id ?? "");
                       setRemoveColOpen(true);
                     }}
                   >
                     Remove column…
-                    {extraColumns.length === 0 && (
-                      <span className="pi-menu-hint">No custom columns yet</span>
+                    {managedColumns.length === 0 && (
+                      <span className="pi-menu-hint">No removable columns</span>
                     )}
                   </button>
                 )}
@@ -548,7 +558,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     aria-label="Column to remove"
                     autoFocus
                   >
-                    {extraColumns.map((col) => (
+                    {managedColumns.map((col) => (
                       <option key={col.id} value={col.id}>
                         {col.label}
                       </option>
@@ -605,10 +615,8 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
           <table className="pi-table pi-project-table">
             <thead>
               <tr>
-                {PROJECT_BUILTIN_COLUMNS.map((col) => (
-                  <th key={col.key}>{col.label}</th>
-                ))}
-                {extraColumns.map((col) => (
+                <th>{PROJECT_LOCKED_COLUMN.label}</th>
+                {managedColumns.map((col) => (
                   <th key={col.id}>{col.label.toUpperCase()}</th>
                 ))}
                 <th>ACTIONS</th>
@@ -627,62 +635,59 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   const busy = busyId === project.id;
                   return (
                     <tr key={project.id}>
-                      {PROJECT_BUILTIN_COLUMNS.map((col) => {
-                        const value = builtinValue(project, col.key);
-                        const isDate = col.key === "ss_date" || col.key === "eol_date";
-                        if (col.key === "compal_name") {
+                      <td>
+                        {canEdit ? (
+                          <input
+                            className="pi-cell-input pi-cell-input-name"
+                            defaultValue={project.name}
+                            key={`${project.id}-name-${project.name}`}
+                            disabled={busy}
+                            aria-label="Compal project name"
+                            onBlur={(e) => {
+                              const next = e.target.value.trim();
+                              if (next && next !== project.name) {
+                                void patchProjectField(project.id, { name: next });
+                              }
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="pi-proj-link"
+                            onClick={() => openProject(project.id)}
+                          >
+                            {project.name || "—"}
+                          </button>
+                        )}
+                      </td>
+                      {managedColumns.map((col) => {
+                        const stdKey = standardKeyForColumn(col);
+                        if (stdKey) {
+                          const value = standardFieldValue(project, stdKey);
+                          const isDate = stdKey === "ss_date" || stdKey === "eol_date";
                           return (
-                            <td key={col.key}>
+                            <td key={col.id}>
                               {canEdit ? (
                                 <input
-                                  className="pi-cell-input pi-cell-input-name"
-                                  defaultValue={project.name}
-                                  key={`${project.id}-name-${project.name}`}
+                                  className="pi-cell-input"
+                                  type={isDate ? "date" : "text"}
+                                  defaultValue={value}
+                                  key={`${project.id}-${stdKey}-${value}`}
                                   disabled={busy}
-                                  aria-label="Compal project name"
+                                  aria-label={col.label}
                                   onBlur={(e) => {
                                     const next = e.target.value.trim();
-                                    if (next && next !== project.name) {
-                                      void patchProjectField(project.id, { name: next });
+                                    if (next !== value) {
+                                      void patchProjectField(project.id, { [stdKey]: next });
                                     }
                                   }}
                                 />
                               ) : (
-                                <button
-                                  type="button"
-                                  className="pi-proj-link"
-                                  onClick={() => openProject(project.id)}
-                                >
-                                  {project.name || "—"}
-                                </button>
+                                <span className="pi-cell-text">{value || "—"}</span>
                               )}
                             </td>
                           );
                         }
-                        return (
-                          <td key={col.key}>
-                            {canEdit ? (
-                              <input
-                                className="pi-cell-input"
-                                type={isDate ? "date" : "text"}
-                                defaultValue={value}
-                                key={`${project.id}-${col.key}-${value}`}
-                                disabled={busy}
-                                aria-label={col.label}
-                                onBlur={(e) => {
-                                  const next = e.target.value.trim();
-                                  if (next !== value) {
-                                    void patchProjectField(project.id, { [col.key]: next });
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <span className="pi-cell-text">{value || "—"}</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      {extraColumns.map((col) => {
                         const value = project.custom?.[col.id] ?? "";
                         return (
                           <td key={col.id}>

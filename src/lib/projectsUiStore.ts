@@ -1,28 +1,82 @@
 import type { Project, ProjectColumn } from "./types";
 
 const KEY = "awb-projects-ui-v1";
+const LOCAL_COLUMNS_SEEDED_KEY = "awb-projects-columns-seeded-v1";
 
+/** Always-visible left column; not managed via Add/Remove column. */
+export const PROJECT_LOCKED_COLUMN = {
+  key: "compal_name",
+  label: "COMPAL PROJECT NAME",
+} as const;
+
+/**
+ * Former builtins that are now removable column defs.
+ * Stable UUIDs so Neon `project_columns.id` and meta JSON stay aligned;
+ * `key` maps to `projects.<key>` cell fields when the column is re-added.
+ */
+export const PROJECT_STANDARD_COLUMNS = [
+  {
+    key: "lenovo_name",
+    label: "LENOVO PROJECT NAME",
+    id: "00000000-0000-4000-8000-0000000000d1",
+  },
+  {
+    key: "bios_id",
+    label: "BIOS ID",
+    id: "00000000-0000-4000-8000-0000000000d2",
+  },
+  {
+    key: "platform",
+    label: "PLATFORM",
+    id: "00000000-0000-4000-8000-0000000000d3",
+  },
+  {
+    key: "dis",
+    label: "DIS",
+    id: "00000000-0000-4000-8000-0000000000d4",
+  },
+  {
+    key: "ss_date",
+    label: "SS DATE",
+    id: "00000000-0000-4000-8000-0000000000d5",
+  },
+  {
+    key: "eol_date",
+    label: "EOL DATE",
+    id: "00000000-0000-4000-8000-0000000000d6",
+  },
+  {
+    key: "security_update",
+    label: "SECURITY UPDATE",
+    id: "00000000-0000-4000-8000-0000000000d7",
+  },
+  {
+    key: "talent_policy",
+    label: "TALENT POLICY",
+    id: "00000000-0000-4000-8000-0000000000d8",
+  },
+  {
+    key: "owner",
+    label: "OWNER",
+    id: "00000000-0000-4000-8000-0000000000d9",
+  },
+] as const;
+
+export type ProjectStandardKey = (typeof PROJECT_STANDARD_COLUMNS)[number]["key"];
+
+/** @deprecated Prefer PROJECT_LOCKED_COLUMN + PROJECT_STANDARD_COLUMNS; kept for callers that list all field keys. */
 export const PROJECT_BUILTIN_COLUMNS = [
-  { key: "compal_name", label: "COMPAL PROJECT NAME" },
-  { key: "lenovo_name", label: "LENOVO PROJECT NAME" },
-  { key: "bios_id", label: "BIOS ID" },
-  { key: "platform", label: "PLATFORM" },
-  { key: "dis", label: "DIS" },
-  { key: "ss_date", label: "SS DATE" },
-  { key: "eol_date", label: "EOL DATE" },
-  { key: "security_update", label: "SECURITY UPDATE" },
-  { key: "talent_policy", label: "TALENT POLICY" },
-  { key: "owner", label: "OWNER" },
+  PROJECT_LOCKED_COLUMN,
+  ...PROJECT_STANDARD_COLUMNS.map(({ key, label }) => ({ key, label })),
 ] as const;
 
 export type ProjectBuiltinKey = (typeof PROJECT_BUILTIN_COLUMNS)[number]["key"];
 
-const BUILTIN_LABELS = new Set(
-  PROJECT_BUILTIN_COLUMNS.map((c) => c.label.trim().toUpperCase()),
-);
-
-/** Reserved header labels that must never get a remove × (builtins + ACTIONS). */
-const RESERVED_HEADER_LABELS = new Set([...BUILTIN_LABELS, "ACTIONS"]);
+/** Only Compal name + Actions stay fixed / non-removable. */
+const RESERVED_HEADER_LABELS = new Set([
+  PROJECT_LOCKED_COLUMN.label.trim().toUpperCase(),
+  "ACTIONS",
+]);
 
 function normalizeLabel(label: string): string {
   return label.trim().toUpperCase();
@@ -30,6 +84,30 @@ function normalizeLabel(label: string): string {
 
 export function isReservedProjectColumnLabel(label: string): boolean {
   return RESERVED_HEADER_LABELS.has(normalizeLabel(label));
+}
+
+export function findStandardProjectColumn(
+  labelOrId: string,
+): (typeof PROJECT_STANDARD_COLUMNS)[number] | undefined {
+  const trimmed = labelOrId.trim();
+  if (!trimmed) return undefined;
+  const upper = normalizeLabel(trimmed);
+  return PROJECT_STANDARD_COLUMNS.find(
+    (col) => col.id === trimmed || col.key === trimmed || normalizeLabel(col.label) === upper,
+  );
+}
+
+export function isStandardProjectColumnId(columnId: string): boolean {
+  return PROJECT_STANDARD_COLUMNS.some((col) => col.id === columnId || col.key === columnId);
+}
+
+export function standardKeyForColumn(col: Pick<ProjectColumn, "id" | "label">): ProjectStandardKey | null {
+  const match = findStandardProjectColumn(col.id) ?? findStandardProjectColumn(col.label);
+  return match?.key ?? null;
+}
+
+export function defaultStandardProjectColumns(): ProjectColumn[] {
+  return PROJECT_STANDARD_COLUMNS.map(({ id, label }) => ({ id, label }));
 }
 
 export type ProjectFieldPatch = {
@@ -76,49 +154,149 @@ function save(state: ProjectsUiState) {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
-/**
- * Drop custom columns whose labels collide with builtins (e.g. OWNER added via +ADD COLUMN).
- * Migrate OWNER cell values into the builtin `owner` overlay field.
- */
-function scrubReservedCustomColumns(state: ProjectsUiState): boolean {
-  const reserved = state.columns.filter((c) => isReservedProjectColumnLabel(c.label));
-  if (reserved.length === 0) return false;
+function localColumnsSeeded(): boolean {
+  return localStorage.getItem(LOCAL_COLUMNS_SEEDED_KEY) === "1";
+}
 
-  const ownerCols = reserved.filter((c) => normalizeLabel(c.label) === "OWNER");
-  for (const col of ownerCols) {
+function markLocalColumnsSeeded() {
+  localStorage.setItem(LOCAL_COLUMNS_SEEDED_KEY, "1");
+}
+
+function normalizeManagedColumns(columns: ProjectColumn[]): ProjectColumn[] {
+  return columns
+    .filter((c) => !isReservedProjectColumnLabel(c.label))
+    .map((c) => {
+      const std = findStandardProjectColumn(c.label) ?? findStandardProjectColumn(c.id);
+      if (std) return { id: std.id, label: std.label };
+      return c;
+    });
+}
+
+/**
+ * One-time: ensure former builtins exist as removable defs (stable ids).
+ * After `alreadySeeded`, Admin removals persist — missing standards are not re-inserted.
+ */
+export function seedStandardProjectColumns(
+  columns: ProjectColumn[],
+  alreadySeeded: boolean,
+): { columns: ProjectColumn[]; changed: boolean; seeded: boolean } {
+  if (alreadySeeded) {
+    const normalized = normalizeManagedColumns(columns);
+    const changed =
+      normalized.length !== columns.length ||
+      normalized.some((c, i) => c.id !== columns[i]?.id || c.label !== columns[i]?.label);
+    return { columns: normalized, changed, seeded: true };
+  }
+
+  const next: ProjectColumn[] = [];
+  let changed = false;
+  const claimed = new Set<string>();
+
+  for (const std of PROJECT_STANDARD_COLUMNS) {
+    const existing = columns.find(
+      (c) =>
+        !claimed.has(c.id) &&
+        (c.id === std.id || c.id === std.key || normalizeLabel(c.label) === normalizeLabel(std.label)),
+    );
+    if (existing) {
+      claimed.add(existing.id);
+      if (existing.id !== std.id || existing.label !== std.label) {
+        next.push({ id: std.id, label: std.label });
+        changed = true;
+      } else {
+        next.push(existing);
+      }
+    } else {
+      next.push({ id: std.id, label: std.label });
+      changed = true;
+    }
+  }
+
+  for (const col of columns) {
+    if (claimed.has(col.id)) continue;
+    if (findStandardProjectColumn(col.label) || findStandardProjectColumn(col.id)) continue;
+    if (isReservedProjectColumnLabel(col.label)) {
+      changed = true;
+      continue;
+    }
+    next.push(col);
+  }
+
+  return {
+    columns: next,
+    changed: changed || columns.length !== next.length,
+    seeded: true,
+  };
+}
+
+/**
+ * Drop custom columns whose labels collide with locked headers (COMPAL / ACTIONS).
+ * Migrate OWNER cell values into the builtin `owner` overlay field when a legacy
+ * custom OWNER column is rewritten to the standard id during seed.
+ */
+function scrubLockedCustomColumns(state: ProjectsUiState): boolean {
+  const locked = state.columns.filter((c) => isReservedProjectColumnLabel(c.label));
+  if (locked.length === 0) return false;
+
+  for (const col of locked) {
+    for (const overlay of Object.values(state.overlays)) {
+      if (overlay.custom && col.id in overlay.custom) {
+        const next = { ...overlay.custom };
+        delete next[col.id];
+        overlay.custom = next;
+      }
+    }
+  }
+
+  const lockedIds = new Set(locked.map((c) => c.id));
+  state.columns = state.columns.filter((c) => !lockedIds.has(c.id));
+  return true;
+}
+
+function migrateOwnerCustomIntoField(state: ProjectsUiState): boolean {
+  let changed = false;
+  for (const col of state.columns) {
+    if (normalizeLabel(col.label) !== "OWNER") continue;
+    const std = findStandardProjectColumn("OWNER");
+    if (!std || col.id === std.id) continue;
     for (const overlay of Object.values(state.overlays)) {
       const fromCustom = overlay.custom?.[col.id];
       if (fromCustom != null && fromCustom !== "" && (overlay.owner == null || overlay.owner === "")) {
         overlay.owner = fromCustom;
+        changed = true;
       }
       if (overlay.custom && col.id in overlay.custom) {
         const next = { ...overlay.custom };
         delete next[col.id];
         overlay.custom = next;
+        changed = true;
       }
     }
+    col.id = std.id;
+    col.label = std.label;
+    changed = true;
   }
+  return changed;
+}
 
-  for (const col of reserved) {
-    if (normalizeLabel(col.label) === "OWNER") continue;
-    for (const overlay of Object.values(state.overlays)) {
-      if (overlay.custom && col.id in overlay.custom) {
-        const next = { ...overlay.custom };
-        delete next[col.id];
-        overlay.custom = next;
-      }
-    }
+function prepareState(state: ProjectsUiState): boolean {
+  let changed = scrubLockedCustomColumns(state);
+  if (migrateOwnerCustomIntoField(state)) changed = true;
+  const ensured = seedStandardProjectColumns(state.columns, localColumnsSeeded());
+  if (ensured.changed) {
+    state.columns = ensured.columns;
+    changed = true;
+  } else {
+    state.columns = ensured.columns;
   }
-
-  const reservedIds = new Set(reserved.map((c) => c.id));
-  state.columns = state.columns.filter((c) => !reservedIds.has(c.id));
-  return true;
+  if (ensured.seeded) markLocalColumnsSeeded();
+  return changed;
 }
 
 /** Snapshot for one-time local → Neon migrate (do not wipe cloud). */
 export function readProjectsUiState(): ProjectsUiState {
   const state = load();
-  if (scrubReservedCustomColumns(state)) save(state);
+  if (prepareState(state)) save(state);
   return {
     columns: state.columns.map((c) => ({ ...c })),
     overlays: Object.fromEntries(
@@ -151,7 +329,7 @@ export function replaceProjectsUiLocal(state: ProjectsUiState) {
 export const projectsUiStore = {
   listColumns(): ProjectColumn[] {
     const state = load();
-    if (scrubReservedCustomColumns(state)) save(state);
+    if (prepareState(state)) save(state);
     return [...state.columns];
   },
 
@@ -159,14 +337,17 @@ export const projectsUiStore = {
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
-      throw new Error(`「${trimmed}」是預設欄位，無法再新增`);
+      throw new Error(`「${trimmed}」是固定欄位，無法再新增`);
     }
     const state = load();
-    scrubReservedCustomColumns(state);
+    prepareState(state);
     if (state.columns.some((c) => normalizeLabel(c.label) === normalizeLabel(trimmed))) {
       throw new Error("欄位名稱已存在");
     }
-    const col: ProjectColumn = { id: crypto.randomUUID(), label: trimmed };
+    const std = findStandardProjectColumn(trimmed);
+    const col: ProjectColumn = std
+      ? { id: std.id, label: std.label }
+      : { id: crypto.randomUUID(), label: trimmed };
     state.columns.push(col);
     save(state);
     return col;
@@ -174,18 +355,21 @@ export const projectsUiStore = {
 
   removeColumn(columnId: string) {
     const state = load();
-    scrubReservedCustomColumns(state);
+    prepareState(state);
     const target = state.columns.find((c) => c.id === columnId);
     if (!target) return;
     if (isReservedProjectColumnLabel(target.label)) {
-      throw new Error("預設欄位無法刪除");
+      throw new Error("固定欄位無法刪除");
     }
     state.columns = state.columns.filter((c) => c.id !== columnId);
-    for (const overlay of Object.values(state.overlays)) {
-      if (overlay.custom && columnId in overlay.custom) {
-        const next = { ...overlay.custom };
-        delete next[columnId];
-        overlay.custom = next;
+    // Standard field values live on project rows — keep them so re-add restores cells.
+    if (!isStandardProjectColumnId(columnId)) {
+      for (const overlay of Object.values(state.overlays)) {
+        if (overlay.custom && columnId in overlay.custom) {
+          const next = { ...overlay.custom };
+          delete next[columnId];
+          overlay.custom = next;
+        }
       }
     }
     save(state);
