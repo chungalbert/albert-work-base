@@ -115,6 +115,39 @@ function scrubReservedCustomColumns(state: ProjectsUiState): boolean {
   return true;
 }
 
+/** Snapshot for one-time local → Neon migrate (do not wipe cloud). */
+export function readProjectsUiState(): ProjectsUiState {
+  const state = load();
+  if (scrubReservedCustomColumns(state)) save(state);
+  return {
+    columns: state.columns.map((c) => ({ ...c })),
+    overlays: Object.fromEntries(
+      Object.entries(state.overlays).map(([id, overlay]) => [id, { ...overlay, custom: { ...(overlay.custom ?? {}) } }]),
+    ),
+  };
+}
+
+/** After a successful cloud migrate, drop local column defs + overlays so Neon is source of truth. */
+export function clearProjectsUiLocal() {
+  save(empty());
+}
+
+/** Replace local UI state (used when migrate leaves unmigrated leftovers). */
+export function replaceProjectsUiLocal(state: ProjectsUiState) {
+  save({
+    columns: Array.isArray(state.columns) ? state.columns.map((c) => ({ ...c })) : [],
+    overlays:
+      state.overlays && typeof state.overlays === "object"
+        ? Object.fromEntries(
+            Object.entries(state.overlays).map(([id, overlay]) => [
+              id,
+              { ...overlay, custom: { ...(overlay.custom ?? {}) } },
+            ]),
+          )
+        : {},
+  });
+}
+
 export const projectsUiStore = {
   listColumns(): ProjectColumn[] {
     const state = load();

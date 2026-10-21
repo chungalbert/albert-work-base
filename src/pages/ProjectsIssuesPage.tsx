@@ -481,11 +481,19 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     + New Project
                   </button>
                 )}
-                {canManageColumns && extraColumns.length > 0 && (
+                {canManageColumns && (
                   <button
                     type="button"
                     className="danger"
+                    disabled={extraColumns.length === 0}
+                    aria-disabled={extraColumns.length === 0}
+                    title={
+                      extraColumns.length === 0
+                        ? "No custom columns to remove. Add one with + ADD COLUMN first."
+                        : "Remove a custom column"
+                    }
                     onClick={() => {
+                      if (extraColumns.length === 0) return;
                       setMoreOpen(false);
                       setAddColOpen(false);
                       setRemoveColId(extraColumns[0]?.id ?? "");
@@ -493,6 +501,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     }}
                   >
                     Remove column…
+                    {extraColumns.length === 0 && (
+                      <span className="pi-menu-hint">No custom columns yet</span>
+                    )}
                   </button>
                 )}
                 {mode === "detail" && canManage && (

@@ -35,7 +35,8 @@ Clear unused `VITE_SUPABASE_*` after cutover.
 
 1. Neon console: **Auth** + **Data API** enabled (already used by the test site).
 2. Apply `neon/schema.sql` (already applied on this project).
-3. Ignore deprecated Worker `db/schema.sql` / uuid repair for production.
+3. Project middle columns + custom column defs: apply `neon/project-columns.sql` (alters `projects`, adds `project_columns`). Already applied on `ep-divine-meadow-azqo19a2`.
+4. Ignore deprecated Worker `db/schema.sql` / uuid repair for production.
 
 ## Local offline
 

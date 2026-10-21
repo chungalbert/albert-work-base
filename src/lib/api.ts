@@ -1,7 +1,13 @@
 import { cloudApi } from "./cloudApi";
 import { ensureSampleIfEmpty, localApi } from "./localApi";
 import { importColumnsIfEmpty, personnelUiStore } from "./personnelUiStore";
-import { projectsUiStore, type ProjectFieldPatch } from "./projectsUiStore";
+import {
+  clearProjectsUiLocal,
+  projectsUiStore,
+  readProjectsUiState,
+  replaceProjectsUiLocal,
+  type ProjectFieldPatch,
+} from "./projectsUiStore";
 import {
   CLOUD_TABLES_MISSING_MESSAGE,
   isSharedStoreUnavailableError,
@@ -9,7 +15,6 @@ import {
   markSharedCloudUnavailable,
   maybeAutoMigrateLocalShared,
 } from "./sharedStore";
-import { hasNeonConfig, hasSupabaseConfig } from "./util";
 import {
   normalizePersonnelRole,
   type AccountInput,
@@ -27,6 +32,181 @@ import {
   type Role,
   type Task,
 } from "./types";
+import { hasNeonConfig, hasSupabaseConfig } from "./util";
+
+const PROJECTS_UI_MIGRATE_FLAG = "awb-projects-ui-migrated-v1";
+let projectsUiMigrateInFlight: Promise<void> | null = null;
+
+function isEmptyField(value: string | undefined | null): boolean {
+  return value == null || String(value).trim() === "";
+}
+
+function isProjectColumnsUnavailableError(err: unknown): boolean {
+  const msg = (
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message?: unknown }).message ?? "")
+      : err instanceof Error
+        ? err.message
+        : String(err ?? "")
+  ).toLowerCase();
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    msg.includes("project_columns") ||
+    (msg.includes("could not find") && msg.includes("lenovo_name")) ||
+    (msg.includes("schema cache") && (msg.includes("project_columns") || msg.includes("custom")))
+  );
+}
+
+function overlayHasValues(overlay: ProjectFieldPatch | undefined): boolean {
+  if (!overlay) return false;
+  return Boolean(
+    overlay.name ||
+      overlay.description ||
+      overlay.lenovo_name ||
+      overlay.bios_id ||
+      overlay.platform ||
+      overlay.dis ||
+      overlay.ss_date ||
+      overlay.eol_date ||
+      overlay.security_update ||
+      overlay.talent_policy ||
+      overlay.owner ||
+      (overlay.custom && Object.keys(overlay.custom).length > 0),
+  );
+}
+
+/**
+ * One-time (per browser): push local awb-projects-ui-v1 extras into Neon.
+ * Never overwrites non-empty cloud field values; preserves custom column ids when possible.
+ * Clears local only after a successful migrate pass (or when there was nothing left to keep).
+ */
+async function maybeMigrateProjectsUiToCloud(): Promise<void> {
+  if (!hasSupabaseConfig()) return;
+  if (localStorage.getItem(PROJECTS_UI_MIGRATE_FLAG) === "1") return;
+  if (projectsUiMigrateInFlight) return projectsUiMigrateInFlight;
+
+  projectsUiMigrateInFlight = (async () => {
+    const local = readProjectsUiState();
+    const hasLocal =
+      local.columns.length > 0 || Object.values(local.overlays).some((o) => overlayHasValues(o));
+    if (!hasLocal) {
+      localStorage.setItem(PROJECTS_UI_MIGRATE_FLAG, "1");
+      return;
+    }
+
+    let cloudColumns: ProjectColumn[] = [];
+    try {
+      cloudColumns = await cloudApi.listProjectColumns();
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) return;
+      throw err;
+    }
+
+    const labelOf = (label: string) => label.trim().toUpperCase();
+    for (const col of local.columns) {
+      if (cloudColumns.some((c) => labelOf(c.label) === labelOf(col.label))) continue;
+      try {
+        const created = await cloudApi.addProjectColumn(col.label, col.id);
+        cloudColumns.push(created);
+      } catch {
+        /* non-admin or duplicate — skip; fields may still migrate under existing ids */
+      }
+    }
+
+    // Remap local custom keys when cloud kept a different id for the same label.
+    const localIdToCloudId = new Map<string, string>();
+    for (const localCol of local.columns) {
+      const cloudCol = cloudColumns.find((c) => labelOf(c.label) === labelOf(localCol.label));
+      if (cloudCol) localIdToCloudId.set(localCol.id, cloudCol.id);
+    }
+
+    let projects: Project[] = [];
+    try {
+      projects = await cloudApi.listProjects();
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) return;
+      throw err;
+    }
+
+    const fieldKeys = [
+      "name",
+      "description",
+      "lenovo_name",
+      "bios_id",
+      "platform",
+      "dis",
+      "ss_date",
+      "eol_date",
+      "security_update",
+      "talent_policy",
+      "owner",
+    ] as const;
+
+    const failedProjectIds = new Set<string>();
+    for (const project of projects) {
+      const overlay = local.overlays[project.id];
+      if (!overlay) continue;
+      const patch: ProjectFieldPatch = {};
+      for (const key of fieldKeys) {
+        const localVal = overlay[key];
+        if (typeof localVal !== "string" || localVal.trim() === "") continue;
+        const cloudVal = project[key];
+        if (isEmptyField(cloudVal)) {
+          (patch as Record<string, string>)[key] = localVal;
+        }
+      }
+      if (overlay.custom) {
+        const mergedCustom: Record<string, string> = {};
+        for (const [localKey, value] of Object.entries(overlay.custom)) {
+          if (value == null || String(value) === "") continue;
+          const cloudKey = localIdToCloudId.get(localKey) ?? localKey;
+          if (isEmptyField(project.custom?.[cloudKey])) {
+            mergedCustom[cloudKey] = String(value);
+          }
+        }
+        if (Object.keys(mergedCustom).length > 0) patch.custom = mergedCustom;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      try {
+        await cloudApi.updateProject(project.id, patch);
+      } catch {
+        failedProjectIds.add(project.id);
+      }
+    }
+
+    // Drop local column defs that now exist in Neon (by label).
+    const remainingColumns = local.columns.filter(
+      (col) => !cloudColumns.some((c) => labelOf(c.label) === labelOf(col.label)),
+    );
+    const remainingOverlays: typeof local.overlays = {};
+    for (const [projectId, overlay] of Object.entries(local.overlays)) {
+      if (failedProjectIds.has(projectId) && overlayHasValues(overlay)) {
+        remainingOverlays[projectId] = overlay;
+      }
+    }
+
+    if (remainingColumns.length === 0 && Object.keys(remainingOverlays).length === 0) {
+      clearProjectsUiLocal();
+      localStorage.setItem(PROJECTS_UI_MIGRATE_FLAG, "1");
+      return;
+    }
+
+    // Keep only unmigrated leftovers (preserve ids); retry next session (do not set flag).
+    replaceProjectsUiLocal({ columns: remainingColumns, overlays: remainingOverlays });
+  })();
+
+  try {
+    await projectsUiMigrateInFlight;
+  } finally {
+    projectsUiMigrateInFlight = null;
+  }
+}
 
 export const isCloud = hasSupabaseConfig;
 
@@ -124,6 +304,8 @@ export const api = {
   },
   async listProjects(): Promise<Project[]> {
     if (hasSupabaseConfig()) {
+      await maybeMigrateProjectsUiToCloud();
+      // Neon is source of truth after migrate; overlay only covers unmigrated leftovers.
       return (await cloudApi.listProjects()).map(withProjectOverlay);
     }
     return localApi.listProjects().map(withProjectOverlay);
@@ -136,19 +318,61 @@ export const api = {
     if (!hasSupabaseConfig()) {
       return withProjectOverlay(localApi.updateProject(projectId, patch));
     }
-    const projects = await cloudApi.listProjects();
-    const base = projects.find((p) => p.id === projectId);
-    if (!base) throw new Error("找不到專案");
-    return projectsUiStore.applyOverlay(projectId, base, patch);
+    try {
+      return withProjectOverlay(await cloudApi.updateProject(projectId, patch));
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) {
+        throw new Error(
+          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
+        );
+      }
+      throw err;
+    }
   },
   async listProjectColumns(): Promise<ProjectColumn[]> {
-    return projectsUiStore.listColumns();
+    if (!hasSupabaseConfig()) {
+      return projectsUiStore.listColumns();
+    }
+    await maybeMigrateProjectsUiToCloud();
+    try {
+      return await cloudApi.listProjectColumns();
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) {
+        return projectsUiStore.listColumns();
+      }
+      throw err;
+    }
   },
   async addProjectColumn(label: string): Promise<ProjectColumn> {
-    return projectsUiStore.addColumn(label);
+    if (!hasSupabaseConfig()) {
+      return projectsUiStore.addColumn(label);
+    }
+    try {
+      return await cloudApi.addProjectColumn(label);
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) {
+        throw new Error(
+          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
+        );
+      }
+      throw err;
+    }
   },
   async removeProjectColumn(columnId: string) {
-    projectsUiStore.removeColumn(columnId);
+    if (!hasSupabaseConfig()) {
+      projectsUiStore.removeColumn(columnId);
+      return;
+    }
+    try {
+      await cloudApi.removeProjectColumn(columnId);
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) {
+        throw new Error(
+          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
+        );
+      }
+      throw err;
+    }
   },
   async listLeaderProjectIds(): Promise<string[]> {
     if (hasSupabaseConfig()) return cloudApi.listLeaderProjectIds();

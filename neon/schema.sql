@@ -18,8 +18,29 @@ create table if not exists public.projects (
   name text not null,
   description text not null default '',
   created_by text not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  lenovo_name text not null default '',
+  bios_id text not null default '',
+  platform text not null default '',
+  dis text not null default '',
+  ss_date text not null default '',
+  eol_date text not null default '',
+  security_update text not null default '',
+  talent_policy text not null default '',
+  owner text not null default '',
+  custom jsonb not null default '{}'::jsonb
+);
+
+create table if not exists public.project_columns (
+  id uuid primary key default gen_random_uuid(),
+  label text not null,
+  sort_order integer not null default 0,
+  created_by text references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists project_columns_label_upper_uidx
+  on public.project_columns (upper(trim(label)));
 
 create table if not exists public.project_members (
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -161,6 +182,7 @@ alter table public.project_members enable row level security;
 alter table public.tasks enable row level security;
 alter table public.shared_notes enable row level security;
 alter table public.otp_vault_entries enable row level security;
+alter table public.project_columns enable row level security;
 
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
@@ -237,6 +259,22 @@ drop policy if exists otp_vault_all on public.otp_vault_entries;
 create policy otp_vault_all on public.otp_vault_entries
   for all to authenticated using (true) with check (true);
 
+drop policy if exists project_columns_select on public.project_columns;
+create policy project_columns_select on public.project_columns
+  for select to authenticated using (true);
+
+drop policy if exists project_columns_insert on public.project_columns;
+create policy project_columns_insert on public.project_columns
+  for insert to authenticated with check (public.is_admin());
+
+drop policy if exists project_columns_update on public.project_columns;
+create policy project_columns_update on public.project_columns
+  for update to authenticated using (public.is_admin());
+
+drop policy if exists project_columns_delete on public.project_columns;
+create policy project_columns_delete on public.project_columns
+  for delete to authenticated using (public.is_admin());
+
 do $$
 declare
   role_name text;
@@ -256,6 +294,7 @@ begin
     grant select, insert, update, delete on table public.tasks to authenticated;
     grant select, insert, update, delete on table public.shared_notes to authenticated;
     grant select, insert, update, delete on table public.otp_vault_entries to authenticated;
+    grant select, insert, update, delete on table public.project_columns to authenticated;
     grant execute on function public.is_admin() to authenticated;
     grant execute on function public.is_project_member(uuid) to authenticated;
     grant execute on function public.is_project_leader(uuid) to authenticated;
