@@ -1,0 +1,14 @@
+name = "kssw-api"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+
+# Secrets (set via `wrangler secret put`, never commit values):
+#   DATABASE_URL
+#   AUTH_SECRET
+#   CRON_SECRET
+#   RESEND_API_KEY (optional)
+#   RESEND_FROM (optional)
+#
+# Vars (non-secret):
+[vars]
+CORS_ORIGIN = "https://chungalbert.github.io"

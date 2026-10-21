@@ -10,4 +10,6 @@ npm install
 npm run dev
 ```
 
+Cloud: set `VITE_API_URL` to the Cloudflare Worker (Neon). Without cloud env vars, local `awb-store-v1` mode still works. See `docs/neon-cutover.md` and `api/README.md`.
+
 預設管理員帳號 `admin`。新增人員時會產生 Default 帳號密碼，請下載 CSV 交給對方登入。

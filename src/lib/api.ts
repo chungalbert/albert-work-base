@@ -9,7 +9,7 @@ import {
   markSharedCloudUnavailable,
   maybeAutoMigrateLocalShared,
 } from "./sharedStore";
-import { hasSupabaseConfig } from "./util";
+import { hasCloudConfig } from "./util";
 import {
   normalizePersonnelRole,
   type AccountInput,
@@ -28,12 +28,12 @@ import {
   type Task,
 } from "./types";
 
-export const isCloud = hasSupabaseConfig;
+export const isCloud = hasCloudConfig;
 
 /**
- * Cloud mode: always use Supabase shared tables (all authenticated users).
+ * Cloud mode: Neon API (VITE_API_URL) or legacy Supabase shared tables.
  * Never sticky-fall-back to per-browser localStorage — that siloed Admin vs Lay_Zhang (#35).
- * Local-only builds (no VITE_SUPABASE_*) still use awb-store-v1.
+ * Local-only builds (no VITE_API_URL / VITE_SUPABASE_*) still use awb-store-v1.
  * Reads may surface local leftovers only while tables are missing (with UI banner).
  * Writes in cloud mode require tables; otherwise throw apply-migration guidance.
  */
@@ -42,7 +42,7 @@ async function withSharedCloud<T>(
   localRead: () => T | Promise<T>,
   mode: "read" | "write",
 ): Promise<T> {
-  if (!hasSupabaseConfig()) {
+  if (!hasCloudConfig()) {
     return localRead();
   }
   try {
@@ -95,17 +95,17 @@ function mergeMembersWithExtras(members: ProjectMember[]): ProjectMember[] {
 
 export const api = {
   async signIn(identifier: string, password: string): Promise<Profile> {
-    if (hasSupabaseConfig()) return withPersonnelOverlay(await cloudApi.signIn(identifier, password));
+    if (hasCloudConfig()) return withPersonnelOverlay(await cloudApi.signIn(identifier, password));
     const profile = await localApi.signIn(identifier, password);
     ensureSampleIfEmpty();
     return withPersonnelOverlay(profile);
   },
   async signOut() {
-    if (hasSupabaseConfig()) return cloudApi.signOut();
+    if (hasCloudConfig()) return cloudApi.signOut();
     localApi.signOut();
   },
   async currentUser(): Promise<Profile | null> {
-    if (hasSupabaseConfig()) {
+    if (hasCloudConfig()) {
       const profile = await cloudApi.currentUser();
       return profile ? withPersonnelOverlay(profile) : null;
     }
@@ -114,7 +114,7 @@ export const api = {
     return profile ? withPersonnelOverlay(profile) : null;
   },
   async listProfiles(): Promise<Profile[]> {
-    if (hasSupabaseConfig()) {
+    if (hasCloudConfig()) {
       const profiles = await cloudApi.listProfiles();
       return mergeProfilesWithExtras(profiles);
     }
@@ -123,17 +123,17 @@ export const api = {
     return mergeProfilesWithExtras(localApi.listProfiles());
   },
   async listProjects(): Promise<Project[]> {
-    if (hasSupabaseConfig()) {
+    if (hasCloudConfig()) {
       return (await cloudApi.listProjects()).map(withProjectOverlay);
     }
     return localApi.listProjects().map(withProjectOverlay);
   },
   async createProject(name: string, description: string): Promise<Project> {
-    if (hasSupabaseConfig()) return withProjectOverlay(await cloudApi.createProject(name, description));
+    if (hasCloudConfig()) return withProjectOverlay(await cloudApi.createProject(name, description));
     return withProjectOverlay(localApi.createProject(name, description));
   },
   async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {
-    if (!hasSupabaseConfig()) {
+    if (!hasCloudConfig()) {
       return withProjectOverlay(localApi.updateProject(projectId, patch));
     }
     const projects = await cloudApi.listProjects();
@@ -151,15 +151,15 @@ export const api = {
     projectsUiStore.removeColumn(columnId);
   },
   async listLeaderProjectIds(): Promise<string[]> {
-    if (hasSupabaseConfig()) return cloudApi.listLeaderProjectIds();
+    if (hasCloudConfig()) return cloudApi.listLeaderProjectIds();
     return localApi.listLeaderProjectIds();
   },
   async deleteProject(id: string) {
-    if (hasSupabaseConfig()) return cloudApi.deleteProject(id);
+    if (hasCloudConfig()) return cloudApi.deleteProject(id);
     localApi.deleteProject(id);
   },
   async listMembers(projectId: string): Promise<ProjectMember[]> {
-    if (hasSupabaseConfig()) {
+    if (hasCloudConfig()) {
       return mergeMembersWithExtras(await cloudApi.listMembers(projectId)).filter(
         (m) => m.project_id === projectId,
       );
@@ -169,35 +169,35 @@ export const api = {
     );
   },
   async listAllMembers(): Promise<ProjectMember[]> {
-    if (hasSupabaseConfig()) return mergeMembersWithExtras(await cloudApi.listAllMembers());
+    if (hasCloudConfig()) return mergeMembersWithExtras(await cloudApi.listAllMembers());
     return mergeMembersWithExtras(localApi.listAllMembers());
   },
   async myRole(projectId: string): Promise<Role | null> {
-    if (hasSupabaseConfig()) return cloudApi.myRole(projectId);
+    if (hasCloudConfig()) return cloudApi.myRole(projectId);
     return localApi.myRole(projectId);
   },
   async createAccounts(rows: AccountInput[]) {
-    if (hasSupabaseConfig()) return cloudApi.createAccounts(rows);
+    if (hasCloudConfig()) return cloudApi.createAccounts(rows);
     return localApi.createAccounts(rows);
   },
   async addProjectMember(projectId: string, userId: string, role: Role) {
-    if (hasSupabaseConfig()) return cloudApi.addProjectMember(projectId, userId, role);
+    if (hasCloudConfig()) return cloudApi.addProjectMember(projectId, userId, role);
     return localApi.addProjectMember(projectId, userId, role);
   },
   async removeProjectMember(projectId: string, userId: string) {
-    if (hasSupabaseConfig()) return cloudApi.removeProjectMember(projectId, userId);
+    if (hasCloudConfig()) return cloudApi.removeProjectMember(projectId, userId);
     localApi.removeProjectMember(projectId, userId);
   },
   async inviteMembers(rows: InviteInput[]) {
-    if (hasSupabaseConfig()) return cloudApi.inviteMembers(rows);
+    if (hasCloudConfig()) return cloudApi.inviteMembers(rows);
     return localApi.inviteMembers(rows);
   },
   async changePassword(current: string, next: string) {
-    if (hasSupabaseConfig()) return cloudApi.changePassword(current, next);
+    if (hasCloudConfig()) return cloudApi.changePassword(current, next);
     return localApi.changePassword(current, next);
   },
   async resetPassword(userId: string) {
-    if (hasSupabaseConfig()) return cloudApi.resetPassword(userId);
+    if (hasCloudConfig()) return cloudApi.resetPassword(userId);
     return localApi.resetPassword(userId);
   },
   async deletePerson(userId: string) {
@@ -206,7 +206,7 @@ export const api = {
       personnelUiStore.removeExtraMember(userId);
       return;
     }
-    if (hasSupabaseConfig()) return cloudApi.deletePerson(userId);
+    if (hasCloudConfig()) return cloudApi.deletePerson(userId);
     localApi.deletePerson(userId);
   },
   async createPersonnelMember(input: CreatePersonnelInput): Promise<Profile> {
@@ -224,7 +224,7 @@ export const api = {
     if (!email && username) email = `${username}@local`;
     if (!email) throw new Error("請填寫帳號或 EMAIL");
 
-    if (!hasSupabaseConfig()) {
+    if (!hasCloudConfig()) {
       const created = await localApi.createPersonnelMember({
         display_name,
         username: username || undefined,
@@ -280,7 +280,7 @@ export const api = {
     }
   },
   async listPersonnelColumns(): Promise<PersonnelColumn[]> {
-    if (!hasSupabaseConfig()) {
+    if (!hasCloudConfig()) {
       importColumnsIfEmpty(localApi.listPersonnelColumns());
     }
     return personnelUiStore.listColumns();
@@ -306,7 +306,7 @@ export const api = {
     if (extra) {
       return personnelUiStore.applyOverlay(userId, extra, patch);
     }
-    if (!hasSupabaseConfig()) {
+    if (!hasCloudConfig()) {
       const updated = localApi.updateProfile(userId, patch);
       return withPersonnelOverlay(updated);
     }
@@ -320,7 +320,7 @@ export const api = {
       personnelUiStore.setExtraProjectIds(userId, projectIds);
       return;
     }
-    if (!hasSupabaseConfig()) {
+    if (!hasCloudConfig()) {
       localApi.setPersonProjects(userId, projectIds);
       return;
     }
@@ -339,27 +339,27 @@ export const api = {
     }
   },
   async listTasks(projectId: string): Promise<Task[]> {
-    if (hasSupabaseConfig()) return cloudApi.listTasks(projectId);
+    if (hasCloudConfig()) return cloudApi.listTasks(projectId);
     return localApi.listTasks(projectId);
   },
   async createTask(input: Omit<Task, "id">): Promise<Task> {
-    if (hasSupabaseConfig()) return cloudApi.createTask(input);
+    if (hasCloudConfig()) return cloudApi.createTask(input);
     return localApi.createTask(input);
   },
   async updateTask(id: string, patch: Partial<Task>): Promise<Task> {
-    if (hasSupabaseConfig()) return cloudApi.updateTask(id, patch);
+    if (hasCloudConfig()) return cloudApi.updateTask(id, patch);
     return localApi.updateTask(id, patch);
   },
   async deleteTask(id: string) {
-    if (hasSupabaseConfig()) return cloudApi.deleteTask(id);
+    if (hasCloudConfig()) return cloudApi.deleteTask(id);
     localApi.deleteTask(id);
   },
   async allTasks(): Promise<Task[]> {
-    if (hasSupabaseConfig()) return cloudApi.allTasksForUser();
+    if (hasCloudConfig()) return cloudApi.allTasksForUser();
     return localApi.allTasks();
   },
   async bootstrapAdmin(username: string, password: string, email: string) {
-    if (!hasSupabaseConfig()) throw new Error("本機模式不需建立雲端管理員");
+    if (!hasCloudConfig()) throw new Error("本機模式不需建立雲端管理員");
     return cloudApi.bootstrapAdmin(username, password, email);
   },
 
