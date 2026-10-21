@@ -41,6 +41,20 @@ function isEmptyField(value: string | undefined | null): boolean {
   return value == null || String(value).trim() === "";
 }
 
+/** Quoted identifiers PostgREST/Postgres use in "missing column/table" errors. */
+const PROJECT_SCHEMA_COLUMNS = [
+  "lenovo_name",
+  "bios_id",
+  "platform",
+  "dis",
+  "ss_date",
+  "eol_date",
+  "security_update",
+  "talent_policy",
+  "owner",
+  "custom",
+] as const;
+
 function isProjectColumnsUnavailableError(err: unknown): boolean {
   const msg = (
     err && typeof err === "object" && "message" in err
@@ -53,13 +67,24 @@ function isProjectColumnsUnavailableError(err: unknown): boolean {
     err && typeof err === "object" && "code" in err
       ? String((err as { code?: unknown }).code ?? "")
       : "";
-  return (
+
+  // Permission / RLS / unique violations mention "project_columns" too — ignore those.
+  // Only treat missing relation / PostgREST schema-cache misses as "run SQL".
+  const missingTableOrColumn =
     code === "42P01" ||
     code === "PGRST205" ||
     code === "PGRST204" ||
-    msg.includes("project_columns") ||
-    (msg.includes("could not find") && msg.includes("lenovo_name")) ||
-    (msg.includes("schema cache") && (msg.includes("project_columns") || msg.includes("custom")))
+    msg.includes("does not exist") ||
+    msg.includes("schema cache") ||
+    msg.includes("could not find the table") ||
+    msg.includes("could not find the '");
+
+  if (!missingTableOrColumn) return false;
+
+  if (msg.includes("project_columns")) return true;
+
+  return PROJECT_SCHEMA_COLUMNS.some(
+    (col) => msg.includes(`'${col}'`) || msg.includes(`"${col}"`),
   );
 }
 
