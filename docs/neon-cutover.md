@@ -11,20 +11,31 @@ GitHub Pages SPA
   → Neon Postgres (RLS via auth.user_id(); profile ids are text)
 ```
 
-- Env: `VITE_NEON_URL=https://ep-....neon.tech/neondb` (**no** user/password/query).
-- Wins over legacy `VITE_SUPABASE_*` when set.
-- **No Cloudflare Worker** required for auth/data (unlike the earlier Worker stub under `api/`, now deprecated).
-- Invite/reset/delete still call `functions.invoke("invite-members")` — that Edge path is Supabase-era; on Neon-only, prefer Personnel UI extras / follow test-repo behavior until a Neon admin path exists.
+## Confirmed working `VITE_NEON_URL` (public — safe to show)
 
-## Schema
+```
+https://ep-divine-meadow-azqo19a2.c-3.ap-southeast-1.aws.neon.tech/neondb
+```
 
-1. In Neon console: enable **Auth** and **Data API**.
-2. Apply `neon/schema.sql` (SQL Editor or `psql`).
-3. Do **not** use the Worker-oriented `db/schema.sql` / `db/repair-align-uuid.sql` for production (uuid `users`/`sessions` was a parallel design; test site uses Neon Auth + text profile ids).
+- Extracted from the live test bundle and the test repo Pages workflow.
+- **Same Neon project** as Albert’s shared pooled host `ep-divine-meadow-azqo19a2…` (public HTTPS endpoint; **not** the postgres password URL).
+- No user, password, or query string.
 
 ## GitHub Actions
 
-Set secret `VITE_NEON_URL` to the same HTTPS URL shape as the test site workflow (host + `/neondb`, no credentials). Clear `VITE_SUPABASE_*` after cutover if unused.
+`.github/workflows/pages.yml` uses that URL by default (same as test). Optional override: repo secret `VITE_NEON_URL`.
+
+Agent could not set the secret (`gh secret set` → HTTP 403). If you want an explicit secret anyway, paste the URL above into:
+
+**Settings → Secrets and variables → Actions → `VITE_NEON_URL`**
+
+Clear unused `VITE_SUPABASE_*` after cutover.
+
+## Schema
+
+1. Neon console: **Auth** + **Data API** enabled (already used by the test site).
+2. Apply `neon/schema.sql` (already applied on this project).
+3. Ignore deprecated Worker `db/schema.sql` / uuid repair for production.
 
 ## Local offline
 
@@ -32,8 +43,13 @@ No `VITE_NEON_URL` and no `VITE_SUPABASE_*` → `awb-store-v1` / `localApi` unch
 
 ## Albert checklist
 
-1. [x] Neon project with Auth + Data API (test site already uses this project).
-2. [ ] Confirm `neon/schema.sql` applied (RLS + `auth.user_id()` helpers).
-3. [ ] Set production GitHub secret `VITE_NEON_URL` (same pattern as test; rotate DB password if it was pasted in chat).
-4. [ ] Smoke login on a Pages build with `VITE_NEON_URL` before merge to production.
-5. [ ] **Do not** deploy the deprecated `api/` Worker for this cutover.
+1. [x] Neon Auth + Data API (test login works).
+2. [x] Same Neon host as production cutover target.
+3. [x] Pages workflow bakes in the working public `VITE_NEON_URL` (secret set failed; default URL is enough).
+4. [ ] **Rotate Neon DB password** if the postgres URL was pasted in chat (Data API URL has no password).
+5. [ ] After merge to `main`: confirm production Pages deploy + smoke login on `/ks-sw-dashboard/`.
+6. [ ] Do **not** deploy the deprecated `api/` Worker.
+
+## Merge readiness
+
+PR #47 is code-ready to cut over once Albert wants production switched. Prefer: merge → wait for Pages → smoke login → then clear Supabase secrets. Ask before merge if you want a final go-ahead.
