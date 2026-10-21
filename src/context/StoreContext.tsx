@@ -16,6 +16,9 @@ interface StoreValue {
   isAll: boolean;
   role: Role | null;
   leaderProjectIds: string[];
+  /** True only until the first projects fetch settles (success or error). */
+  initialLoading: boolean;
+  loadError: string;
   setProjectId: (id: string) => void;
   projectName: (id: string) => string;
   canLeadProject: (id: string) => boolean;
@@ -32,37 +35,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [leaderProjectIds, setLeaderProjectIds] = useState<string[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const hasLoadedOnce = useRef(false);
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
   const reload = useCallback(async () => {
-    if (!user) return;
-    const [nextProjects, nextProfiles, nextAllTasks, nextLeaderIds, nextAllMembers] = await Promise.all([
-      api.listProjects(),
-      api.listProfiles(),
-      api.allTasks(),
-      api.listLeaderProjectIds(),
-      api.listAllMembers(),
-    ]);
-    const visible = new Set(nextProjects.map((project) => project.id));
-    setProjects(nextProjects);
-    setProfiles(nextProfiles);
-    setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
-    setLeaderProjectIds(nextLeaderIds);
-    setAllMembers(nextAllMembers.filter((member) => visible.has(member.project_id)));
-    const current = projectIdRef.current;
-    const selected =
-      current === ALL_PROJECTS_ID
-        ? ALL_PROJECTS_ID
-        : current && visible.has(current)
-          ? current
-          : nextProjects[0]?.id ?? null;
-    if (selected !== current) setProjectId(selected);
+    if (!user) {
+      setInitialLoading(false);
+      return;
+    }
+    if (!hasLoadedOnce.current) setInitialLoading(true);
+    try {
+      const [nextProjects, nextProfiles, nextAllTasks, nextLeaderIds, nextAllMembers] = await Promise.all([
+        api.listProjects(),
+        api.listProfiles(),
+        api.allTasks(),
+        api.listLeaderProjectIds(),
+        api.listAllMembers(),
+      ]);
+      const visible = new Set(nextProjects.map((project) => project.id));
+      setProjects(nextProjects);
+      setProfiles(nextProfiles);
+      setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
+      setLeaderProjectIds(nextLeaderIds);
+      setAllMembers(nextAllMembers.filter((member) => visible.has(member.project_id)));
+      const current = projectIdRef.current;
+      const selected =
+        current === ALL_PROJECTS_ID
+          ? ALL_PROJECTS_ID
+          : current && visible.has(current)
+            ? current
+            : nextProjects[0]?.id ?? null;
+      if (selected !== current) setProjectId(selected);
+      setLoadError("");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "載入專案失敗");
+    } finally {
+      hasLoadedOnce.current = true;
+      setInitialLoading(false);
+    }
   }, [user]);
 
   useEffect(() => {
+    hasLoadedOnce.current = false;
+    if (!user) {
+      setInitialLoading(false);
+      setLoadError("");
+      return;
+    }
+    setInitialLoading(true);
     void reload();
-  }, [reload]);
+  }, [reload, user]);
 
   const isAll = isAllProjects(projectId);
   const project = isAll ? null : projects.find((item) => item.id === projectId) ?? null;
@@ -113,12 +138,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       isAll,
       role,
       leaderProjectIds,
+      initialLoading,
+      loadError,
       setProjectId,
       projectName,
       canLeadProject,
       reload,
     }),
-    [projects, profiles, members, allMembers, allTasks, tasks, projectId, project, isAll, role, leaderProjectIds, projectName, canLeadProject, reload],
+    [
+      projects,
+      profiles,
+      members,
+      allMembers,
+      allTasks,
+      tasks,
+      projectId,
+      project,
+      isAll,
+      role,
+      leaderProjectIds,
+      initialLoading,
+      loadError,
+      projectName,
+      canLeadProject,
+      reload,
+    ],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
