@@ -19,6 +19,16 @@ import type {
 import { normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
+/** Hidden project row: durable store for custom column defs when Data API cache misses project_columns. */
+export const PROJECT_COLUMNS_META_NAME = "__kssw_meta__";
+const PROJECT_COLUMNS_DEFS_KEY = "__kssw_column_defs";
+
+type StoredProjectColumn = ProjectColumn & { sort_order: number };
+
+function isProjectColumnsMetaProject(project: Pick<Project, "name">): boolean {
+  return project.name === PROJECT_COLUMNS_META_NAME;
+}
+
 function normalizeProjectRow(row: Project): Project {
   const custom =
     row.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
@@ -37,6 +47,52 @@ function normalizeProjectRow(row: Project): Project {
     owner: row.owner ?? "",
     custom,
   };
+}
+
+function parseStoredProjectColumns(raw: string | undefined): StoredProjectColumn[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item, index) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as { id?: unknown; label?: unknown; sort_order?: unknown };
+        const id = typeof row.id === "string" ? row.id.trim() : "";
+        const label = typeof row.label === "string" ? row.label.trim() : "";
+        if (!id || !label) return null;
+        const sort_order = Number(row.sort_order);
+        return {
+          id,
+          label,
+          sort_order: Number.isFinite(sort_order) ? sort_order : index,
+        };
+      })
+      .filter((row): row is StoredProjectColumn => Boolean(row));
+  } catch {
+    return [];
+  }
+}
+
+function isSchemaCacheMissError(err: unknown): boolean {
+  const msg = (
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message?: unknown }).message ?? "")
+      : err instanceof Error
+        ? err.message
+        : String(err ?? "")
+  ).toLowerCase();
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "PGRST205" ||
+    code === "PGRST202" ||
+    msg.includes("schema cache") ||
+    msg.includes("could not find the table") ||
+    msg.includes("could not find the function")
+  );
 }
 
 function normalizeTask(task: Task): Task {
@@ -268,15 +324,22 @@ export const cloudApi = {
   async listProjects(): Promise<Project[]> {
     const { data, error } = await sb().from("projects").select("*").order("created_at");
     if (error) throw error;
-    return (data as Project[]).map(normalizeProjectRow);
+    return (data as Project[])
+      .map(normalizeProjectRow)
+      .filter((project) => !isProjectColumnsMetaProject(project));
   },
 
   async createProject(name: string, description: string): Promise<Project> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("專案名稱不能空白");
+    if (trimmed === PROJECT_COLUMNS_META_NAME) {
+      throw new Error("此專案名稱為系統保留");
+    }
     const { data, error } = await sb()
       .from("projects")
-      .insert({ name, description, created_by: me.id })
+      .insert({ name: trimmed, description, created_by: me.id })
       .select()
       .single();
     if (error) throw error;
@@ -325,22 +388,121 @@ export const cloudApi = {
     if (error) throw error;
   },
 
-  async listProjectColumns(): Promise<ProjectColumn[]> {
+  /**
+   * Ensure the hidden meta project that stores column defs in projects.custom.
+   * Neon Data API often returns PGRST205 for project_columns INSERT even when the table
+   * exists; projects.custom PATCH is reliable and does not need a schema-cache refresh.
+   */
+  async ensureProjectColumnsMeta(): Promise<Project> {
+    const { data, error } = await sb()
+      .from("projects")
+      .select("*")
+      .eq("name", PROJECT_COLUMNS_META_NAME)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return normalizeProjectRow(data as Project);
+
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    const { data: created, error: createError } = await sb()
+      .from("projects")
+      .insert({
+        name: PROJECT_COLUMNS_META_NAME,
+        description: "System: shared project column definitions",
+        created_by: me.id,
+        custom: { [PROJECT_COLUMNS_DEFS_KEY]: "[]" },
+      })
+      .select()
+      .single();
+    if (createError) throw createError;
+    return normalizeProjectRow(created as Project);
+  },
+
+  async listProjectColumnsFromMeta(): Promise<StoredProjectColumn[]> {
+    const meta = await cloudApi.ensureProjectColumnsMeta();
+    return parseStoredProjectColumns(meta.custom?.[PROJECT_COLUMNS_DEFS_KEY]).sort(
+      (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
+    );
+  },
+
+  async saveProjectColumnsToMeta(columns: StoredProjectColumn[]): Promise<void> {
+    const meta = await cloudApi.ensureProjectColumnsMeta();
+    const normalized = columns
+      .map((col, index) => ({
+        id: col.id,
+        label: col.label.trim(),
+        sort_order: Number.isFinite(col.sort_order) ? col.sort_order : index,
+      }))
+      .filter((col) => col.id && col.label)
+      .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
+    const nextCustom = {
+      ...(meta.custom ?? {}),
+      [PROJECT_COLUMNS_DEFS_KEY]: JSON.stringify(normalized),
+    };
+    const { error } = await sb().from("projects").update({ custom: nextCustom }).eq("id", meta.id);
+    if (error) throw error;
+  },
+
+  async listProjectColumnsFromTable(): Promise<StoredProjectColumn[]> {
     const { data, error } = await sb()
       .from("project_columns")
       .select("id, label, sort_order")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return ((data ?? []) as { id: string; label: string }[]).map((row) => ({
+    return ((data ?? []) as { id: string; label: string; sort_order: number }[]).map((row, index) => ({
       id: row.id,
       label: row.label,
+      sort_order: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : index,
     }));
+  },
+
+  async listProjectColumns(): Promise<ProjectColumn[]> {
+    let tableCols: StoredProjectColumn[] = [];
+    try {
+      tableCols = await cloudApi.listProjectColumnsFromTable();
+    } catch (err) {
+      if (!isSchemaCacheMissError(err)) throw err;
+    }
+    const metaCols = await cloudApi.listProjectColumnsFromMeta();
+    const mergedStored = (() => {
+      const byId = new Map<string, StoredProjectColumn>();
+      for (const col of metaCols) byId.set(col.id, col);
+      for (const col of tableCols) {
+        const prev = byId.get(col.id);
+        byId.set(col.id, prev ? { ...prev, ...col, label: col.label || prev.label } : col);
+      }
+      return [...byId.values()].sort(
+        (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
+      );
+    })();
+
+    // Keep meta as durable mirror so Add Column survives project_columns PGRST205.
+    const metaKey = metaCols
+      .map((c) => `${c.id}:${c.label}:${c.sort_order}`)
+      .sort()
+      .join("|");
+    const mergedKey = mergedStored
+      .map((c) => `${c.id}:${c.label}:${c.sort_order}`)
+      .sort()
+      .join("|");
+    if (mergedKey !== metaKey) {
+      try {
+        await cloudApi.saveProjectColumnsToMeta(mergedStored);
+      } catch {
+        /* non-admin readers may lack update — listing still works from merge */
+      }
+    }
+
+    return mergedStored.map(({ id, label }) => ({ id, label }));
   },
 
   async addProjectColumn(label: string, id?: string): Promise<ProjectColumn> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
+    if (!me.is_admin) throw new Error("只有管理員可以新增欄位");
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
@@ -352,30 +514,55 @@ export const cloudApi = {
       throw new Error("欄位名稱已存在");
     }
 
-    const { data: orderRows, error: orderError } = await sb().from("project_columns").select("sort_order");
-    if (orderError) throw orderError;
-    const maxOrder = ((orderRows ?? []) as { sort_order: number }[]).reduce(
-      (max, row) => Math.max(max, Number(row.sort_order) || 0),
-      -1,
-    );
-
-    const row: Record<string, string | number | null> = {
+    const metaCols = await cloudApi.listProjectColumnsFromMeta();
+    const maxOrder = metaCols.reduce((max, row) => Math.max(max, row.sort_order), -1);
+    const col: StoredProjectColumn = {
+      id: id ?? crypto.randomUUID(),
       label: trimmed,
       sort_order: maxOrder + 1,
-      created_by: me.id,
     };
-    if (id) row.id = id;
 
-    const { data, error } = await sb().from("project_columns").insert(row).select("id, label").single();
-    if (error) throw error;
-    return { id: (data as ProjectColumn).id, label: (data as ProjectColumn).label };
+    // Durable path first: projects.custom is always in the Data API schema cache.
+    await cloudApi.saveProjectColumnsToMeta([...metaCols, col]);
+
+    // Best-effort mirror into project_columns (may 404 PGRST205 on Neon until Console refresh).
+    try {
+      const { error } = await sb()
+        .from("project_columns")
+        .insert({
+          id: col.id,
+          label: col.label,
+          sort_order: col.sort_order,
+          created_by: me.id,
+        });
+      if (error && !isSchemaCacheMissError(error)) {
+        // Unique race with a concurrent table insert — meta already has the row.
+        const code = String((error as { code?: string }).code ?? "");
+        if (code !== "23505") throw error;
+      }
+    } catch (err) {
+      if (!isSchemaCacheMissError(err)) throw err;
+    }
+
+    return { id: col.id, label: col.label };
   },
 
   async removeProjectColumn(columnId: string) {
-    const { error } = await sb().from("project_columns").delete().eq("id", columnId);
-    if (error) throw error;
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    if (!me.is_admin) throw new Error("只有管理員可以刪除欄位");
 
-    // Strip custom cell values for this column from every project (best-effort).
+    const metaCols = await cloudApi.listProjectColumnsFromMeta();
+    await cloudApi.saveProjectColumnsToMeta(metaCols.filter((col) => col.id !== columnId));
+
+    try {
+      const { error } = await sb().from("project_columns").delete().eq("id", columnId);
+      if (error && !isSchemaCacheMissError(error)) throw error;
+    } catch (err) {
+      if (!isSchemaCacheMissError(err)) throw err;
+    }
+
+    // Strip custom cell values for this column from every visible project (best-effort).
     const projects = await cloudApi.listProjects();
     for (const project of projects) {
       if (!project.custom || !(columnId in project.custom)) continue;
@@ -406,6 +593,11 @@ export const cloudApi = {
   },
 
   async deleteProject(id: string) {
+    const { data: row, error: readError } = await sb().from("projects").select("name").eq("id", id).maybeSingle();
+    if (readError) throw readError;
+    if (row && isProjectColumnsMetaProject(row as Project)) {
+      throw new Error("系統保留專案無法刪除");
+    }
     const { error } = await sb().from("projects").delete().eq("id", id);
     if (error) throw error;
   },

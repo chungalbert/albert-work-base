@@ -36,7 +36,7 @@ Clear unused `VITE_SUPABASE_*` after cutover.
 1. Neon console: **Auth** + **Data API** enabled (already used by the test site).
 2. Apply `neon/schema.sql` (already applied on this project).
 3. Project middle columns + custom column defs: apply `neon/project-columns.sql` (alters `projects`, adds `project_columns`). Already applied on `ep-divine-meadow-azqo19a2`.
-4. After that DDL, ensure PostgREST reloads (`NOTIFY pgrst, 'reload schema'` — included at the end of `project-columns.sql`). Stale Data API schema cache surfaces as `PGRST205` on `project_columns` INSERT even when the table exists; Admin **+ ADD COLUMN** then fails until reload.
+4. After that DDL, **refresh the Neon Data API schema cache** (Console → Data API → Refresh schema cache, or `neon data-api refresh-schema`). `NOTIFY pgrst` alone is **not** enough on Neon Auth Data API. Until refresh, `project_columns` INSERT may return intermittent `PGRST205`; the app dual-writes column defs to the hidden `__kssw_meta__` project's `custom` jsonb so **+ ADD COLUMN** still works.
 5. Ignore deprecated Worker `db/schema.sql` / uuid repair for production.
 
 ## Local offline
