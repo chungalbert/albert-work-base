@@ -49,3 +49,31 @@ begin
     grant select, insert, update, delete on table public.project_columns to authenticated;
   end if;
 end $$;
+
+-- PostgREST (Neon Data API) can miss a freshly-created table until schema reload.
+-- Prefer this NOTIFY after DDL. Optional admin RPC (may take time to appear in Data API cache):
+create or replace function public.reload_pgrst_schema()
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'only admin can reload schema cache';
+  end if;
+  perform pg_notify('pgrst', 'reload schema');
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.reload_pgrst_schema() from public;
+
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    grant execute on function public.reload_pgrst_schema() to authenticated;
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';

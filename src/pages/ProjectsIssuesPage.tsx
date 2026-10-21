@@ -143,7 +143,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const canManageColumns = isAdmin && mode === "list";
 
   const refreshProjectColumns = async () => {
-    setExtraColumns(await api.listProjectColumns());
+    try {
+      setExtraColumns(await api.listProjectColumns());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Load columns failed");
+    }
   };
 
   useEffect(() => {
