@@ -9,7 +9,11 @@ import {
 } from "../lib/analyzed";
 import { api } from "../lib/api";
 import { addDaysISO, todayISO } from "../lib/dates";
-import { PROJECT_BUILTIN_COLUMNS, type ProjectBuiltinKey } from "../lib/projectsUiStore";
+import {
+  isReservedProjectColumnLabel,
+  PROJECT_BUILTIN_COLUMNS,
+  type ProjectBuiltinKey,
+} from "../lib/projectsUiStore";
 import {
   isTaskOpen,
   TASK_STATUSES,
@@ -163,6 +167,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         p.eol_date,
         p.security_update,
         p.talent_policy,
+        p.owner,
         ...Object.values(p.custom ?? {}),
       ]
         .filter(Boolean)
@@ -409,7 +414,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     <input
                       value={newColLabel}
                       onChange={(e) => setNewColLabel(e.target.value)}
-                      placeholder="e.g. Owner"
+                      placeholder="e.g. Region"
                       autoFocus
                     />
                   </label>
@@ -525,14 +530,16 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   <th key={col.id}>
                     <span className="pi-col-head">
                       {col.label.toUpperCase()}
-                      <button
-                        type="button"
-                        className="pi-col-remove"
-                        title={`Remove ${col.label}`}
-                        onClick={() => void onRemoveProjectColumn(col.id, col.label)}
-                      >
-                        ×
-                      </button>
+                      {!isReservedProjectColumnLabel(col.label) && (
+                        <button
+                          type="button"
+                          className="pi-col-remove"
+                          title={`Remove ${col.label}`}
+                          onClick={() => void onRemoveProjectColumn(col.id, col.label)}
+                        >
+                          ×
+                        </button>
+                      )}
                     </span>
                   </th>
                 ))}
