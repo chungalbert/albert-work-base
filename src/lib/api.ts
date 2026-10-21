@@ -9,7 +9,7 @@ import {
   markSharedCloudUnavailable,
   maybeAutoMigrateLocalShared,
 } from "./sharedStore";
-import { hasSupabaseConfig } from "./util";
+import { hasNeonConfig, hasSupabaseConfig } from "./util";
 import {
   normalizePersonnelRole,
   type AccountInput,
@@ -236,7 +236,9 @@ export const api = {
       return withPersonnelOverlay(created);
     }
 
-    // Cloud: try invite edge function; on failure, persist as client-side extra member.
+    // Neon: Better Auth admin.createUser (no Edge Functions). Legacy Supabase: invite-members.
+    // Do not silent-fall-back to localStorage extras on Neon — that looked like success but
+    // new members could not log in with DEFAULT_PASSWORD.
     try {
       const creds = await cloudApi.createAccounts([
         { display_name, unit: phone, email },
@@ -247,6 +249,22 @@ export const api = {
         profiles.find((p) => p.email.toLowerCase() === email) ??
         (cred ? profiles.find((p) => p.username === cred.username) : undefined);
       if (!profile) throw new Error("帳號已建立，但找不到人員資料");
+
+      const login =
+        username ||
+        cred?.username ||
+        profile.username;
+      if (hasNeonConfig()) {
+        await cloudApi.syncPersonnelProfile(profile.id, {
+          username: login,
+          display_name,
+          unit: phone,
+          is_admin: personnel_role === "Admin",
+        });
+        const refreshed = await cloudApi.listProfiles();
+        profile = refreshed.find((p) => p.id === profile!.id) ?? profile;
+      }
+
       profile = personnelUiStore.applyOverlay(profile.id, profile, {
         display_name,
         unit: phone,
@@ -258,7 +276,9 @@ export const api = {
         await api.setPersonProjects(profile.id, projectIds);
       }
       return withPersonnelOverlay(profile);
-    } catch {
+    } catch (err) {
+      if (hasNeonConfig()) throw err;
+      // Legacy Supabase-only: keep UI-only extra member if Edge invite is unavailable.
       const id = crypto.randomUUID();
       const login =
         username ||
