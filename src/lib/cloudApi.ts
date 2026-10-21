@@ -1,7 +1,13 @@
 import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { credentialOrTransportMessage, isTransportFailure, NETWORK_MESSAGE } from "./loginError";
 import { getSupabase } from "./supabase";
-import { isReservedProjectColumnLabel, type ProjectFieldPatch } from "./projectsUiStore";
+import {
+  findStandardProjectColumn,
+  isReservedProjectColumnLabel,
+  isStandardProjectColumnId,
+  seedStandardProjectColumns,
+  type ProjectFieldPatch,
+} from "./projectsUiStore";
 import type {
   AccountInput,
   CredentialRow,
@@ -22,8 +28,22 @@ import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 /** Hidden project row: durable store for custom column defs when Data API cache misses project_columns. */
 export const PROJECT_COLUMNS_META_NAME = "__kssw_meta__";
 const PROJECT_COLUMNS_DEFS_KEY = "__kssw_column_defs";
+/** Set after one-time seed of former builtin middle columns into meta defs. */
+const PROJECT_COLUMNS_SEEDED_KEY = "__kssw_columns_seeded";
 
 type StoredProjectColumn = ProjectColumn & { sort_order: number };
+
+function metaSeededFlag(custom: Record<string, string> | undefined): boolean {
+  return custom?.[PROJECT_COLUMNS_SEEDED_KEY] === "1";
+}
+
+function withSortOrder(columns: ProjectColumn[]): StoredProjectColumn[] {
+  return columns.map((col, index) => ({
+    id: col.id,
+    label: col.label,
+    sort_order: index,
+  }));
+}
 
 function isProjectColumnsMetaProject(project: Pick<Project, "name">): boolean {
   return project.name === PROJECT_COLUMNS_META_NAME;
@@ -406,13 +426,17 @@ export const cloudApi = {
 
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
+    const seeded = seedStandardProjectColumns([], false);
     const { data: created, error: createError } = await sb()
       .from("projects")
       .insert({
         name: PROJECT_COLUMNS_META_NAME,
         description: "System: shared project column definitions",
         created_by: me.id,
-        custom: { [PROJECT_COLUMNS_DEFS_KEY]: "[]" },
+        custom: {
+          [PROJECT_COLUMNS_DEFS_KEY]: JSON.stringify(withSortOrder(seeded.columns)),
+          [PROJECT_COLUMNS_SEEDED_KEY]: "1",
+        },
       })
       .select()
       .single();
@@ -427,7 +451,10 @@ export const cloudApi = {
     );
   },
 
-  async saveProjectColumnsToMeta(columns: StoredProjectColumn[]): Promise<void> {
+  async saveProjectColumnsToMeta(
+    columns: StoredProjectColumn[],
+    options?: { markSeeded?: boolean },
+  ): Promise<void> {
     const meta = await cloudApi.ensureProjectColumnsMeta();
     const normalized = columns
       .map((col, index) => ({
@@ -437,10 +464,13 @@ export const cloudApi = {
       }))
       .filter((col) => col.id && col.label)
       .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
-    const nextCustom = {
+    const nextCustom: Record<string, string> = {
       ...(meta.custom ?? {}),
       [PROJECT_COLUMNS_DEFS_KEY]: JSON.stringify(normalized),
     };
+    if (options?.markSeeded || metaSeededFlag(meta.custom)) {
+      nextCustom[PROJECT_COLUMNS_SEEDED_KEY] = "1";
+    }
     const { error } = await sb().from("projects").update({ custom: nextCustom }).eq("id", meta.id);
     if (error) throw error;
   },
@@ -466,37 +496,53 @@ export const cloudApi = {
     } catch (err) {
       if (!isSchemaCacheMissError(err)) throw err;
     }
-    const metaCols = await cloudApi.listProjectColumnsFromMeta();
+    const meta = await cloudApi.ensureProjectColumnsMeta();
+    const metaCols = parseStoredProjectColumns(meta.custom?.[PROJECT_COLUMNS_DEFS_KEY]).sort(
+      (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
+    );
+    const alreadySeeded = metaSeededFlag(meta.custom);
+    // After seed, meta is the membership source of truth (table is best-effort mirror).
+    // Otherwise a failed project_columns DELETE would resurrect removed columns.
     const mergedStored = (() => {
       const byId = new Map<string, StoredProjectColumn>();
       for (const col of metaCols) byId.set(col.id, col);
       for (const col of tableCols) {
         const prev = byId.get(col.id);
-        byId.set(col.id, prev ? { ...prev, ...col, label: col.label || prev.label } : col);
+        if (prev) {
+          byId.set(col.id, { ...prev, ...col, label: col.label || prev.label });
+        } else if (!alreadySeeded) {
+          byId.set(col.id, col);
+        }
       }
       return [...byId.values()].sort(
         (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
       );
     })();
+    const seeded = seedStandardProjectColumns(
+      mergedStored.map(({ id, label }) => ({ id, label })),
+      alreadySeeded,
+    );
+    const finalStored = withSortOrder(seeded.columns);
 
     // Keep meta as durable mirror so Add Column survives project_columns PGRST205.
     const metaKey = metaCols
       .map((c) => `${c.id}:${c.label}:${c.sort_order}`)
       .sort()
       .join("|");
-    const mergedKey = mergedStored
+    const finalKey = finalStored
       .map((c) => `${c.id}:${c.label}:${c.sort_order}`)
       .sort()
       .join("|");
-    if (mergedKey !== metaKey) {
+    const needWrite = finalKey !== metaKey || seeded.changed || (seeded.seeded && !alreadySeeded);
+    if (needWrite) {
       try {
-        await cloudApi.saveProjectColumnsToMeta(mergedStored);
+        await cloudApi.saveProjectColumnsToMeta(finalStored, { markSeeded: seeded.seeded });
       } catch {
         /* non-admin readers may lack update — listing still works from merge */
       }
     }
 
-    return mergedStored.map(({ id, label }) => ({ id, label }));
+    return finalStored.map(({ id, label }) => ({ id, label }));
   },
 
   async addProjectColumn(label: string, id?: string): Promise<ProjectColumn> {
@@ -506,7 +552,7 @@ export const cloudApi = {
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
-      throw new Error(`「${trimmed}」是預設欄位，無法再新增`);
+      throw new Error(`「${trimmed}」是固定欄位，無法再新增`);
     }
 
     const existing = await cloudApi.listProjectColumns();
@@ -514,16 +560,21 @@ export const cloudApi = {
       throw new Error("欄位名稱已存在");
     }
 
+    const std = findStandardProjectColumn(trimmed);
+    if (std && existing.some((c) => c.id === std.id)) {
+      throw new Error("欄位名稱已存在");
+    }
+
     const metaCols = await cloudApi.listProjectColumnsFromMeta();
     const maxOrder = metaCols.reduce((max, row) => Math.max(max, row.sort_order), -1);
     const col: StoredProjectColumn = {
-      id: id ?? crypto.randomUUID(),
-      label: trimmed,
+      id: std?.id ?? id ?? crypto.randomUUID(),
+      label: std?.label ?? trimmed,
       sort_order: maxOrder + 1,
     };
 
     // Durable path first: projects.custom is always in the Data API schema cache.
-    await cloudApi.saveProjectColumnsToMeta([...metaCols, col]);
+    await cloudApi.saveProjectColumnsToMeta([...metaCols, col], { markSeeded: true });
 
     // Best-effort mirror into project_columns (may 404 PGRST205 on Neon until Console refresh).
     try {
@@ -553,7 +604,15 @@ export const cloudApi = {
     if (!me.is_admin) throw new Error("只有管理員可以刪除欄位");
 
     const metaCols = await cloudApi.listProjectColumnsFromMeta();
-    await cloudApi.saveProjectColumnsToMeta(metaCols.filter((col) => col.id !== columnId));
+    const target = metaCols.find((col) => col.id === columnId);
+    if (target && isReservedProjectColumnLabel(target.label)) {
+      throw new Error("固定欄位無法刪除");
+    }
+
+    await cloudApi.saveProjectColumnsToMeta(
+      metaCols.filter((col) => col.id !== columnId),
+      { markSeeded: true },
+    );
 
     try {
       const { error } = await sb().from("project_columns").delete().eq("id", columnId);
@@ -561,6 +620,9 @@ export const cloudApi = {
     } catch (err) {
       if (!isSchemaCacheMissError(err)) throw err;
     }
+
+    // Standard middle columns keep values on projects.* fields so re-add restores cells.
+    if (isStandardProjectColumnId(columnId)) return;
 
     // Strip custom cell values for this column from every visible project (best-effort).
     const projects = await cloudApi.listProjects();
