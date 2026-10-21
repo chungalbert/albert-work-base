@@ -1,11 +1,27 @@
+import { createClient as createNeonClient, defaultDeriveNeonUrls, SupabaseAuthAdapter } from "@neondatabase/neon-js";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { hasSupabaseConfig } from "./util";
+import { hasNeonConfig, hasSupabaseCredentials } from "./util";
 
 let client: SupabaseClient | null = null;
 
-/** Legacy Supabase client — only when VITE_SUPABASE_* is set (not used in Neon API mode). */
 export function getSupabase(): SupabaseClient | null {
-  if (!hasSupabaseConfig()) return null;
+  if (hasNeonConfig()) {
+    if (!client) {
+      const urls = defaultDeriveNeonUrls(import.meta.env.VITE_NEON_URL!);
+      client = createNeonClient({
+        auth: {
+          url: urls.auth,
+          adapter: SupabaseAuthAdapter(),
+          // Username login calls lookup_login_email before a session exists.
+          // Anonymous JWT is not a user; a real session still wins in getJWTToken.
+          allowAnonymous: true,
+        },
+        dataApi: { url: urls.dataApi },
+      }) as unknown as SupabaseClient;
+    }
+    return client;
+  }
+  if (!hasSupabaseCredentials()) return null;
   if (!client) {
     client = createClient(
       import.meta.env.VITE_SUPABASE_URL!,

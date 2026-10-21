@@ -1,18 +1,16 @@
-/** Neon + Worker API mode (preferred; leaves Supabase). */
-export function hasApiConfig(): boolean {
-  return Boolean(import.meta.env.VITE_API_URL);
+export function hasNeonConfig(): boolean {
+  return Boolean(import.meta.env.VITE_NEON_URL);
 }
 
-/** Legacy Supabase direct-from-browser mode. */
-export function hasSupabaseConfig(): boolean {
+export function hasSupabaseCredentials(): boolean {
   return Boolean(
     import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY,
   );
 }
 
-/** Any remote cloud backend (API preferred over Supabase). */
-export function hasCloudConfig(): boolean {
-  return hasApiConfig() || hasSupabaseConfig();
+/** Cloud mode. On this branch a Neon URL takes the place of Supabase. */
+export function hasSupabaseConfig(): boolean {
+  return hasNeonConfig() || hasSupabaseCredentials();
 }
 
 export function usernameFromEmail(email: string, taken: Set<string>): string {

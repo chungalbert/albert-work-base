@@ -1,3 +1,7 @@
+-- DEPRECATED for production cutover.
+-- Prefer neon/schema.sql (Neon Auth + Data API, text profile ids) — same as ks-sw-dashboard_test.
+-- This file was an earlier Worker-oriented users/sessions design.
+
 -- KSSW Neon schema (no Supabase auth.*). Apply with: psql "$DATABASE_URL" -f db/schema.sql
 -- Password hashes / session tokens are owned by the Worker API, not the browser.
 

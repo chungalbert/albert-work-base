@@ -1,54 +1,39 @@
-# Neon + Worker cutover (secrets checklist)
+# Neon Auth + Data API cutover (aligned with ks-sw-dashboard_test)
 
-Full plan: store doc `docs/neon-migration-plan.md` (Cursor project Context).
+Working reference: [live test](https://chungalbert.github.io/ks-sw-dashboard_test/) · repo [`chungalbert/ks-sw-dashboard_test`](https://github.com/chungalbert/ks-sw-dashboard_test).
 
-## Status (2026-10-21)
+## Architecture (proven)
 
-- [x] Neon DB schema applied (`db/schema.sql` + `db/repair-align-uuid.sql`)
-- [x] Tables verified: `users`, `sessions`, `profiles`, `projects`, `project_members`, `tasks`, `shared_notes`, `otp_vault_entries`
-- [x] Existing admin profile linked into `users` (temporary password `123456` — change after first login)
-- [ ] Cloudflare Worker deploy (**blocked**: no `wrangler login` / API token in this environment)
-- [ ] GitHub `VITE_API_URL` (only after Worker is live + smoke login)
-- [ ] **Rotate Neon DB password** (connection string was pasted in chat)
-
-Do **not** merge PR #47 or set production `VITE_API_URL` until Worker smoke login works.
-
-## Albert: deploy Worker (Cloudflare)
-
-From a machine where you are logged into Cloudflare:
-
-```bash
-cd api
-npm ci
-npx wrangler login   # or set CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
-
-# Paste values when prompted — never commit them
-npx wrangler secret put DATABASE_URL
-npx wrangler secret put AUTH_SECRET   # openssl rand -hex 32
-
-# Optional
-# npx wrangler secret put CRON_SECRET
-# npx wrangler secret put RESEND_API_KEY
-
-npx wrangler deploy
-# → copy https://kssw-api.<account>.workers.dev
-# → GitHub Actions secret VITE_API_URL = that URL
+```
+GitHub Pages SPA
+  → @neondatabase/neon-js (SupabaseAuthAdapter)
+  → Neon Auth + Neon Data API
+  → Neon Postgres (RLS via auth.user_id(); profile ids are text)
 ```
 
-Edit `api/wrangler.toml` `CORS_ORIGIN` if the Pages origin differs.
+- Env: `VITE_NEON_URL=https://ep-....neon.tech/neondb` (**no** user/password/query).
+- Wins over legacy `VITE_SUPABASE_*` when set.
+- **No Cloudflare Worker** required for auth/data (unlike the earlier Worker stub under `api/`, now deprecated).
+- Invite/reset/delete still call `functions.invoke("invite-members")` — that Edge path is Supabase-era; on Neon-only, prefer Personnel UI extras / follow test-repo behavior until a Neon admin path exists.
 
-## Secrets / env names
+## Schema
 
-| Name | Where |
-|------|--------|
-| `DATABASE_URL` | `wrangler secret put` only |
-| `AUTH_SECRET` | `wrangler secret put` (`openssl rand -hex 32`) |
-| `CRON_SECRET` | Worker + optional GitHub Actions |
-| `RESEND_API_KEY` / `RESEND_FROM` | Worker (optional) |
-| `VITE_API_URL` | GitHub Actions secret for Pages build |
+1. In Neon console: enable **Auth** and **Data API**.
+2. Apply `neon/schema.sql` (SQL Editor or `psql`).
+3. Do **not** use the Worker-oriented `db/schema.sql` / `db/repair-align-uuid.sql` for production (uuid `users`/`sessions` was a parallel design; test site uses Neon Auth + text profile ids).
 
-After cutover: clear `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
+## GitHub Actions
+
+Set secret `VITE_NEON_URL` to the same HTTPS URL shape as the test site workflow (host + `/neondb`, no credentials). Clear `VITE_SUPABASE_*` after cutover if unused.
 
 ## Local offline
 
-No `VITE_API_URL` and no `VITE_SUPABASE_*` → existing `awb-store-v1` / `localApi` mode unchanged.
+No `VITE_NEON_URL` and no `VITE_SUPABASE_*` → `awb-store-v1` / `localApi` unchanged.
+
+## Albert checklist
+
+1. [x] Neon project with Auth + Data API (test site already uses this project).
+2. [ ] Confirm `neon/schema.sql` applied (RLS + `auth.user_id()` helpers).
+3. [ ] Set production GitHub secret `VITE_NEON_URL` (same pattern as test; rotate DB password if it was pasted in chat).
+4. [ ] Smoke login on a Pages build with `VITE_NEON_URL` before merge to production.
+5. [ ] **Do not** deploy the deprecated `api/` Worker for this cutover.

@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { hasCloudConfig } from "../lib/util";
+import { hasSupabaseConfig } from "../lib/util";
 import { api } from "../lib/api";
 
 export function LoginPage() {
@@ -127,7 +127,7 @@ export function LoginPage() {
               <button className="btn-blue" type="submit" disabled={busy}>
                 {busy ? "…" : "Login"}
               </button>
-              {hasCloudConfig() && (
+              {hasSupabaseConfig() && (
                 <p className="hint" style={{ marginTop: 16 }}>
                   First cloud setup?
                   <button type="button" className="ghost" onClick={() => setShowSetup((v) => !v)}>

@@ -1,12 +1,12 @@
 import { cloudApi } from "./cloudApi";
 import { localApi } from "./localApi";
-import { hasCloudConfig } from "./util";
+import { hasSupabaseConfig } from "./util";
 
 const MIGRATE_FLAG = "awb-shared-cloud-migrated-v1";
 const PROBE_TTL_MS = 15_000;
 
 export type SharedStoreStatus = {
-  /** Cloud env present (VITE_API_URL or legacy VITE_SUPABASE_*). */
+  /** Cloud env present (VITE_NEON_URL or legacy VITE_SUPABASE_*). */
   cloudConfigured: boolean;
   /** Shared tables reachable for all authenticated users. */
   cloudReady: boolean;
@@ -46,11 +46,11 @@ export function isSharedStoreUnavailableError(err: unknown): boolean {
 }
 
 export const CLOUD_TABLES_MISSING_MESSAGE =
-  "共用雲端資料表尚未建立，無法跨帳號同步。請管理員對 Neon 執行 db/schema.sql（或舊路徑 docs/apply-shared-notes-otp.md），然後重新整理。";
+  "共用雲端資料表尚未建立，無法跨帳號同步。請管理員對 Neon 執行 neon/schema.sql（或舊路徑 docs/apply-shared-notes-otp.md），然後重新整理。";
 
 /** Probe shared tables. Never sticky-fails for the whole session — rechecks after TTL. */
 export async function probeSharedCloudReady(force = false): Promise<boolean> {
-  if (!hasCloudConfig()) {
+  if (!hasSupabaseConfig()) {
     lastProbeOk = false;
     return false;
   }
@@ -93,7 +93,7 @@ export function getLocalSharedCounts(): { notes: number; otp: number } {
 }
 
 export async function getSharedStoreStatus(): Promise<SharedStoreStatus> {
-  const cloudConfigured = hasCloudConfig();
+  const cloudConfigured = hasSupabaseConfig();
   const counts = getLocalSharedCounts();
   if (!cloudConfigured) {
     return {
@@ -137,7 +137,7 @@ export async function getSharedStoreStatus(): Promise<SharedStoreStatus> {
  * then clear local shared arrays so Admin's silo data becomes org-visible.
  */
 export async function migrateLocalSharedToCloud(force = false): Promise<{ notes: number; otp: number }> {
-  if (!hasCloudConfig()) {
+  if (!hasSupabaseConfig()) {
     throw new Error("本機模式無需上傳。");
   }
   if (!force && localStorage.getItem(MIGRATE_FLAG) === "1" && getLocalSharedCounts().notes + getLocalSharedCounts().otp === 0) {
@@ -180,7 +180,7 @@ export async function migrateLocalSharedToCloud(force = false): Promise<{ notes:
 
 /** After cloud becomes ready, auto-migrate once if local leftovers exist. */
 export async function maybeAutoMigrateLocalShared(): Promise<void> {
-  if (!hasCloudConfig()) return;
+  if (!hasSupabaseConfig()) return;
   if (localStorage.getItem(MIGRATE_FLAG) === "1") return;
   const { notes, otp } = getLocalSharedCounts();
   if (notes + otp === 0) {
