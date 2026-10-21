@@ -11,6 +11,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { ToolPage } from "./pages/ToolPage";
 import { OtpVaultPage } from "./pages/OtpVaultPage";
 import { WheaToolPage } from "./pages/WheaToolPage";
+import { SecurityPage } from "./pages/SecurityPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -31,6 +32,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "home", label: "Dashboard", icon: "grid" },
       { id: "projects", label: "Projects & Issues", icon: "folder" },
       { id: "gantt", label: "Project schedule", icon: "calendar" },
+      { id: "security", label: "Security", icon: "shield" },
     ],
   },
   {
@@ -86,6 +88,12 @@ function NavIcon({ name }: { name: string }) {
         <svg {...common}>
           <rect x="3" y="5" width="18" height="16" rx="2" />
           <path d="M16 3v4M8 3v4M3 11h18" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
         </svg>
       );
     case "book":
@@ -270,7 +278,7 @@ function Shell() {
         <main
           className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}`}
         >
-          {!hideChrome && currentView !== "guides" && currentView !== "tool" && <ReminderBanner />}
+          {!hideChrome && currentView !== "guides" && currentView !== "tool" && currentView !== "security" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (
             <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
@@ -283,6 +291,7 @@ function Shell() {
               <GanttPage />
             </Suspense>
           )}
+          {currentView === "security" && <SecurityPage />}
           {currentView === "guides" && <GuidesPage />}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />
