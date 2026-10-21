@@ -22,7 +22,8 @@ import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 const KEY = "awb-store-v1";
 const LEGACY_NOTES_KEY = "awb-notes-v1";
 const LEGACY_OTP_KEY = "awb-otp-vault-v1";
-const ADMIN_HASH = "4dcaa92c01008dd30fa65408b02c8b400a00e6c6f20065fbf3be39c908c4ed20";
+/** sha256(`admin:${DEFAULT_PASSWORD}`) — keep in sync with util.DEFAULT_PASSWORD. */
+const ADMIN_HASH = "c8c09b731e0fb8d16540a7edcc47927c739c09baad3adb85bdba1ab3b4fa7120";
 
 interface Store {
   sessionUserId: string | null;
@@ -177,13 +178,12 @@ function normalizeTask(task: Task): Task {
   };
 }
 
-const PASSWORD_SCHEME = 2;
+const PASSWORD_SCHEME = 3;
 
 async function ensurePasswordScheme() {
   const store = load();
   if (store.passwordScheme === PASSWORD_SCHEME) return;
   for (const profile of store.profiles) {
-    if (profile.is_admin) continue;
     store.passwordHashes[profile.id] = await sha256(`${profile.username}:${DEFAULT_PASSWORD}`);
   }
   store.passwordScheme = PASSWORD_SCHEME;

@@ -638,6 +638,91 @@ export const cloudApi = {
     }
   },
 
+  /**
+   * Replace managed column defs + display order in one meta write (Admin Save).
+   * Mirrors into project_columns best-effort; strips custom cells for removed non-standards.
+   */
+  async replaceProjectColumns(columns: ProjectColumn[]): Promise<ProjectColumn[]> {
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    if (!me.is_admin) throw new Error("只有管理員可以編輯欄位");
+
+    const labels = new Set<string>();
+    const normalized: ProjectColumn[] = [];
+    for (const raw of columns) {
+      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      const label = typeof raw.label === "string" ? raw.label.trim() : "";
+      if (!id || !label) throw new Error("欄位定義不完整");
+      if (isReservedProjectColumnLabel(label)) {
+        throw new Error(`「${label}」是固定欄位，無法再新增`);
+      }
+      const key = label.toUpperCase();
+      if (labels.has(key)) throw new Error("欄位名稱已存在");
+      labels.add(key);
+      const std = findStandardProjectColumn(id) ?? findStandardProjectColumn(label);
+      normalized.push(std ? { id: std.id, label: std.label } : { id, label });
+    }
+
+    const prev = await cloudApi.listProjectColumnsFromMeta();
+    const nextIds = new Set(normalized.map((c) => c.id));
+    const removed = prev.filter((c) => !nextIds.has(c.id));
+    const stored = withSortOrder(normalized);
+
+    await cloudApi.saveProjectColumnsToMeta(stored, { markSeeded: true });
+
+    try {
+      for (const col of removed) {
+        const { error } = await sb().from("project_columns").delete().eq("id", col.id);
+        if (error && !isSchemaCacheMissError(error)) throw error;
+      }
+      for (const col of stored) {
+        const { error: updateError } = await sb()
+          .from("project_columns")
+          .update({ label: col.label, sort_order: col.sort_order })
+          .eq("id", col.id);
+        if (updateError && !isSchemaCacheMissError(updateError)) throw updateError;
+        const { error: insertError } = await sb().from("project_columns").insert({
+          id: col.id,
+          label: col.label,
+          sort_order: col.sort_order,
+          created_by: me.id,
+        });
+        if (insertError && !isSchemaCacheMissError(insertError)) {
+          const code = String((insertError as { code?: string }).code ?? "");
+          if (code !== "23505") throw insertError;
+        }
+      }
+    } catch (err) {
+      if (!isSchemaCacheMissError(err)) throw err;
+    }
+
+    const stripIds = removed
+      .map((c) => c.id)
+      .filter((id) => !isStandardProjectColumnId(id));
+    if (stripIds.length > 0) {
+      const projects = await cloudApi.listProjects();
+      for (const project of projects) {
+        if (!project.custom) continue;
+        let changed = false;
+        const nextCustom = { ...project.custom };
+        for (const id of stripIds) {
+          if (id in nextCustom) {
+            delete nextCustom[id];
+            changed = true;
+          }
+        }
+        if (!changed) continue;
+        const { error: updateError } = await sb()
+          .from("projects")
+          .update({ custom: nextCustom })
+          .eq("id", project.id);
+        if (updateError) throw updateError;
+      }
+    }
+
+    return normalized;
+  },
+
   async listLeaderProjectIds(): Promise<string[]> {
     const me = await cloudApi.currentUser();
     if (!me) return [];
