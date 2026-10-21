@@ -106,7 +106,7 @@ function isProjectColumnsSchemaCacheError(err: unknown): boolean {
 
 function projectColumnsUnavailableMessage(err: unknown): string {
   if (isProjectColumnsSchemaCacheError(err)) {
-    return "Neon schema cache 尚未載入 project_columns。請稍後再試；若持續失敗請管理員執行 neon/project-columns.sql（含 NOTIFY）或呼叫 reload_pgrst_schema。";
+    return "Neon Data API schema cache 尚未載入 project_columns。請在 Neon Console → Data API 按 Refresh schema cache（NOTIFY pgrst 無效）；應用程式會改寫入 __kssw_meta__。";
   }
   return "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。";
 }

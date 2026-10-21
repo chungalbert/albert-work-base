@@ -224,6 +224,12 @@ drop policy if exists projects_delete on public.projects;
 create policy projects_delete on public.projects
   for delete to authenticated using (public.is_admin());
 
+-- Hidden __kssw_meta__ row holds column defs in custom jsonb (Data API fallback).
+drop policy if exists projects_select_column_meta on public.projects;
+create policy projects_select_column_meta on public.projects
+  for select to authenticated
+  using (name = '__kssw_meta__');
+
 drop policy if exists members_select on public.project_members;
 create policy members_select on public.project_members
   for select to authenticated using (public.is_project_member(project_id));
@@ -275,7 +281,8 @@ drop policy if exists project_columns_delete on public.project_columns;
 create policy project_columns_delete on public.project_columns
   for delete to authenticated using (public.is_admin());
 
--- PostgREST schema reload (also in neon/project-columns.sql for existing DBs).
+-- Best-effort NOTIFY only. Neon Auth Data API needs Console "Refresh schema cache"
+-- (or neon data-api refresh-schema). See neon/project-columns.sql.
 create or replace function public.reload_pgrst_schema()
 returns text
 language plpgsql

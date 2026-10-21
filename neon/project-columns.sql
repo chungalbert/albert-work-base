@@ -50,8 +50,12 @@ begin
   end if;
 end $$;
 
--- PostgREST (Neon Data API) can miss a freshly-created table until schema reload.
--- Prefer this NOTIFY after DDL. Optional admin RPC (may take time to appear in Data API cache):
+-- Neon Data API schema cache:
+-- NOTIFY pgrst does NOT reliably refresh Neon Auth Data API (unlike self-hosted PostgREST).
+-- After DDL, refresh via Neon Console → Data API → "Refresh schema cache", or:
+--   neon data-api refresh-schema --project-id … --database neondb
+--   PATCH /projects/{id}/branches/{id}/data-api/neondb with Authorization: Bearer $NEON_API_KEY and body {}
+-- Optional RPC (best-effort; itself may be missing from the cache until Console refresh):
 create or replace function public.reload_pgrst_schema()
 returns text
 language plpgsql
@@ -75,5 +79,27 @@ begin
     grant execute on function public.reload_pgrst_schema() to authenticated;
   end if;
 end $$;
+
+-- App fallback: custom column defs live in projects.custom on a hidden meta row when
+-- Data API intermittently returns PGRST205 for project_columns. All authenticated users
+-- must be able to SELECT that row (projects_select normally requires membership).
+drop policy if exists projects_select_column_meta on public.projects;
+create policy projects_select_column_meta on public.projects
+  for select to authenticated
+  using (name = '__kssw_meta__');
+
+-- Seed meta row (stable id). Prefer first admin as created_by; else any profile.
+insert into public.projects (id, name, description, created_by, custom)
+select
+  '00000000-0000-4000-8000-0000000000c1'::uuid,
+  '__kssw_meta__',
+  'System: shared project column definitions',
+  p.id,
+  jsonb_build_object('__kssw_column_defs', '[]')
+from (
+  select id from public.profiles where is_admin order by created_at asc limit 1
+) p
+where not exists (select 1 from public.projects where name = '__kssw_meta__')
+on conflict (id) do nothing;
 
 notify pgrst, 'reload schema';
