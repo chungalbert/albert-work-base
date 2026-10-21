@@ -55,7 +55,7 @@ const PROJECT_SCHEMA_COLUMNS = [
   "custom",
 ] as const;
 
-function isProjectColumnsUnavailableError(err: unknown): boolean {
+function projectColumnsErrorParts(err: unknown): { msg: string; code: string } {
   const msg = (
     err && typeof err === "object" && "message" in err
       ? String((err as { message?: unknown }).message ?? "")
@@ -67,6 +67,11 @@ function isProjectColumnsUnavailableError(err: unknown): boolean {
     err && typeof err === "object" && "code" in err
       ? String((err as { code?: unknown }).code ?? "")
       : "";
+  return { msg, code };
+}
+
+function isProjectColumnsUnavailableError(err: unknown): boolean {
+  const { msg, code } = projectColumnsErrorParts(err);
 
   // Permission / RLS / unique violations mention "project_columns" too — ignore those.
   // Only treat missing relation / PostgREST schema-cache misses as "run SQL".
@@ -86,6 +91,53 @@ function isProjectColumnsUnavailableError(err: unknown): boolean {
   return PROJECT_SCHEMA_COLUMNS.some(
     (col) => msg.includes(`'${col}'`) || msg.includes(`"${col}"`),
   );
+}
+
+/** Stale PostgREST cache (table exists in Postgres, Data API hasn't reloaded yet). */
+function isProjectColumnsSchemaCacheError(err: unknown): boolean {
+  if (!isProjectColumnsUnavailableError(err)) return false;
+  const { msg, code } = projectColumnsErrorParts(err);
+  return (
+    code === "PGRST205" ||
+    msg.includes("schema cache") ||
+    msg.includes("could not find the table")
+  );
+}
+
+function projectColumnsUnavailableMessage(err: unknown): string {
+  if (isProjectColumnsSchemaCacheError(err)) {
+    return "Neon schema cache 尚未載入 project_columns。請稍後再試；若持續失敗請管理員執行 neon/project-columns.sql（含 NOTIFY）或呼叫 reload_pgrst_schema。";
+  }
+  return "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry project_columns Data API calls when PostgREST returns a stale schema cache miss.
+ * On first cache miss, best-effort NOTIFY via reload_pgrst_schema (admin RPC).
+ */
+async function withProjectColumnsRetry<T>(work: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await work();
+    } catch (err) {
+      last = err;
+      if (!isProjectColumnsSchemaCacheError(err)) throw err;
+      if (attempt === 0) {
+        try {
+          await cloudApi.reloadPgrstSchema();
+        } catch {
+          /* RPC missing or not admin — still retry after backoff */
+        }
+      }
+      await sleep(350 * (attempt + 1));
+    }
+  }
+  throw last;
 }
 
 function overlayHasValues(overlay: ProjectFieldPatch | undefined): boolean {
@@ -127,7 +179,7 @@ async function maybeMigrateProjectsUiToCloud(): Promise<void> {
 
     let cloudColumns: ProjectColumn[] = [];
     try {
-      cloudColumns = await cloudApi.listProjectColumns();
+      cloudColumns = await withProjectColumnsRetry(() => cloudApi.listProjectColumns());
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) return;
       throw err;
@@ -137,7 +189,9 @@ async function maybeMigrateProjectsUiToCloud(): Promise<void> {
     for (const col of local.columns) {
       if (cloudColumns.some((c) => labelOf(c.label) === labelOf(col.label))) continue;
       try {
-        const created = await cloudApi.addProjectColumn(col.label, col.id);
+        const created = await withProjectColumnsRetry(() =>
+          cloudApi.addProjectColumn(col.label, col.id),
+        );
         cloudColumns.push(created);
       } catch {
         /* non-admin or duplicate — skip; fields may still migrate under existing ids */
@@ -344,12 +398,12 @@ export const api = {
       return withProjectOverlay(localApi.updateProject(projectId, patch));
     }
     try {
-      return withProjectOverlay(await cloudApi.updateProject(projectId, patch));
+      return withProjectOverlay(
+        await withProjectColumnsRetry(() => cloudApi.updateProject(projectId, patch)),
+      );
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) {
-        throw new Error(
-          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
-        );
+        throw new Error(projectColumnsUnavailableMessage(err));
       }
       throw err;
     }
@@ -360,10 +414,13 @@ export const api = {
     }
     await maybeMigrateProjectsUiToCloud();
     try {
-      return await cloudApi.listProjectColumns();
+      return await withProjectColumnsRetry(() => cloudApi.listProjectColumns());
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) {
-        return projectsUiStore.listColumns();
+        // Only use local leftovers when they exist — never mask a cloud miss with [].
+        const local = projectsUiStore.listColumns();
+        if (local.length > 0) return local;
+        throw new Error(projectColumnsUnavailableMessage(err));
       }
       throw err;
     }
@@ -373,12 +430,10 @@ export const api = {
       return projectsUiStore.addColumn(label);
     }
     try {
-      return await cloudApi.addProjectColumn(label);
+      return await withProjectColumnsRetry(() => cloudApi.addProjectColumn(label));
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) {
-        throw new Error(
-          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
-        );
+        throw new Error(projectColumnsUnavailableMessage(err));
       }
       throw err;
     }
@@ -389,12 +444,10 @@ export const api = {
       return;
     }
     try {
-      await cloudApi.removeProjectColumn(columnId);
+      await withProjectColumnsRetry(() => cloudApi.removeProjectColumn(columnId));
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) {
-        throw new Error(
-          "專案欄位尚未同步到 Neon。請管理員執行 neon/project-columns.sql 後重新整理。",
-        );
+        throw new Error(projectColumnsUnavailableMessage(err));
       }
       throw err;
     }

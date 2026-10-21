@@ -275,6 +275,24 @@ drop policy if exists project_columns_delete on public.project_columns;
 create policy project_columns_delete on public.project_columns
   for delete to authenticated using (public.is_admin());
 
+-- PostgREST schema reload (also in neon/project-columns.sql for existing DBs).
+create or replace function public.reload_pgrst_schema()
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'only admin can reload schema cache';
+  end if;
+  perform pg_notify('pgrst', 'reload schema');
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.reload_pgrst_schema() from public;
+
 do $$
 declare
   role_name text;
@@ -298,5 +316,8 @@ begin
     grant execute on function public.is_admin() to authenticated;
     grant execute on function public.is_project_member(uuid) to authenticated;
     grant execute on function public.is_project_leader(uuid) to authenticated;
+    grant execute on function public.reload_pgrst_schema() to authenticated;
   end if;
 end $$;
+
+notify pgrst, 'reload schema';

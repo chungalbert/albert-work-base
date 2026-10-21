@@ -319,6 +319,12 @@ export const cloudApi = {
     return normalizeProjectRow(data as Project);
   },
 
+  /** Ask PostgREST to reload its schema cache (admin-only SECURITY DEFINER). */
+  async reloadPgrstSchema(): Promise<void> {
+    const { error } = await sb().rpc("reload_pgrst_schema");
+    if (error) throw error;
+  },
+
   async listProjectColumns(): Promise<ProjectColumn[]> {
     const { data, error } = await sb()
       .from("project_columns")
@@ -346,7 +352,8 @@ export const cloudApi = {
       throw new Error("欄位名稱已存在");
     }
 
-    const { data: orderRows } = await sb().from("project_columns").select("sort_order");
+    const { data: orderRows, error: orderError } = await sb().from("project_columns").select("sort_order");
+    if (orderError) throw orderError;
     const maxOrder = ((orderRows ?? []) as { sort_order: number }[]).reduce(
       (max, row) => Math.max(max, Number(row.sort_order) || 0),
       -1,
