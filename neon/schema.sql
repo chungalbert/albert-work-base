@@ -170,9 +170,21 @@ drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own on public.profiles
   for insert to authenticated with check (id = auth.user_id());
 
+drop policy if exists profiles_insert_admin on public.profiles;
+create policy profiles_insert_admin on public.profiles
+  for insert to authenticated with check (public.is_admin());
+
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
   for update to authenticated using (id = auth.user_id());
+
+drop policy if exists profiles_update_admin on public.profiles;
+create policy profiles_update_admin on public.profiles
+  for update to authenticated using (public.is_admin());
+
+drop policy if exists profiles_delete_admin on public.profiles;
+create policy profiles_delete_admin on public.profiles
+  for delete to authenticated using (public.is_admin());
 
 drop policy if exists projects_select on public.projects;
 create policy projects_select on public.projects
@@ -238,7 +250,7 @@ begin
     end if;
   end loop;
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
-    grant insert, update on table public.profiles to authenticated;
+    grant insert, update, delete on table public.profiles to authenticated;
     grant select, insert, update, delete on table public.projects to authenticated;
     grant select, insert, update, delete on table public.project_members to authenticated;
     grant select, insert, update, delete on table public.tasks to authenticated;

@@ -15,6 +15,7 @@ import type {
   Task,
 } from "./types";
 import { normalizeTaskStatus } from "./types";
+import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
 function normalizeTask(task: Task): Task {
   return {
@@ -29,6 +30,127 @@ function sb() {
   const client = getSupabase();
   if (!client) throw new Error("尚未設定 Supabase 或 Neon");
   return client;
+}
+
+/** Better Auth client behind Neon SupabaseAuthAdapter (admin.createUser / setUserPassword / removeUser). */
+function neonBetterAuth() {
+  const auth = sb().auth as {
+    getBetterAuthInstance?: () => {
+      admin: {
+        createUser: (input: {
+          email: string;
+          password: string;
+          name: string;
+          role?: string;
+          data?: Record<string, unknown>;
+        }) => Promise<{ data?: { user?: { id: string } }; user?: { id: string }; error?: { message?: string } }>;
+        setUserPassword: (input: { userId: string; newPassword: string }) => Promise<{ error?: { message?: string } }>;
+        removeUser: (input: { userId: string }) => Promise<{ error?: { message?: string } }>;
+        setRole: (input: { userId: string; role: string }) => Promise<{ error?: { message?: string } }>;
+      };
+    };
+  };
+  const instance = auth.getBetterAuthInstance?.();
+  if (!instance?.admin) {
+    throw new Error("Neon Auth admin API 不可用");
+  }
+  return instance;
+}
+
+function neonAdminErrorMessage(err: unknown, fallback: string): string {
+  const message =
+    err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string"
+      ? (err as { message: string }).message
+      : err instanceof Error
+        ? err.message
+        : "";
+  const status =
+    err && typeof err === "object" && "status" in err ? Number((err as { status: unknown }).status) : NaN;
+  if (status === 403 || /forbidden|not admin|unauthorized|permission/i.test(message)) {
+    return "Neon Auth 需要 Admin 角色：請在 Neon Console → Auth → Users 對此帳號選 Make admin（與 Personnel Admin 不同）";
+  }
+  return message || fallback;
+}
+
+async function createAccountsViaNeon(rows: AccountInput[]): Promise<CredentialRow[]> {
+  const me = await cloudApi.currentUser();
+  if (!me) throw new Error("尚未登入");
+  const canCreate =
+    Boolean(me.is_admin) ||
+    (await cloudApi.listAllMembers()).some((m) => m.user_id === me.id && m.role === "leader");
+  if (!canCreate) throw new Error("只有專案領導或管理員可以開通帳號");
+
+  const betterAuth = neonBetterAuth();
+  const existingProfiles = await cloudApi.listProfiles();
+  const taken = new Set(existingProfiles.map((p) => p.username.toLowerCase()));
+  const credentials: CredentialRow[] = [];
+
+  for (const row of rows) {
+    const email = row.email.trim().toLowerCase();
+    if (!email || !row.display_name?.trim()) continue;
+
+    const existing = existingProfiles.find((p) => p.email.toLowerCase() === email);
+    if (existing) {
+      credentials.push({
+        display_name: existing.display_name,
+        username: existing.username,
+        email: existing.email,
+        password: "(已有帳號，沿用原密碼)",
+      });
+      continue;
+    }
+
+    const username = usernameFromEmail(email, taken);
+    taken.add(username);
+    const password = DEFAULT_PASSWORD;
+    const display_name = row.display_name.trim();
+    const unit = row.unit?.trim() ?? "";
+
+    let userId = "";
+    try {
+      const created = await betterAuth.admin.createUser({
+        email,
+        password,
+        name: display_name,
+        role: "user",
+        data: { username, display_name, unit },
+      });
+      if (created?.error?.message) throw new Error(created.error.message);
+      userId = created?.data?.user?.id ?? created?.user?.id ?? "";
+    } catch (err) {
+      throw new Error(neonAdminErrorMessage(err, "建立 Neon 帳號失敗"));
+    }
+    if (!userId) throw new Error("建立 Neon 帳號失敗：沒有回傳使用者 id");
+
+    const { error: insertError } = await sb().from("profiles").insert({
+      id: userId,
+      username,
+      display_name,
+      unit,
+      email,
+      is_admin: false,
+    });
+    if (insertError) throw insertError;
+
+    existingProfiles.push({
+      id: userId,
+      username,
+      display_name,
+      unit,
+      email,
+      is_admin: false,
+    });
+    credentials.push({ display_name, username, email, password });
+  }
+
+  return credentials;
+}
+
+async function invokeInviteMembers(body: Record<string, unknown>) {
+  const { data, error } = await sb().functions.invoke("invite-members", { body });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 async function ensureOwnProfile(): Promise<Profile | null> {
@@ -184,10 +306,35 @@ export const cloudApi = {
   },
 
   async createAccounts(rows: AccountInput[]): Promise<CredentialRow[]> {
-    const { data, error } = await sb().functions.invoke("invite-members", { body: { rows } });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    // Neon Auth has no Edge Functions — use Better Auth admin.createUser + profiles insert.
+    if (hasNeonConfig()) return createAccountsViaNeon(rows);
+    const data = await invokeInviteMembers({ rows });
     return data.credentials as CredentialRow[];
+  },
+
+  /** After Add Member: persist Personnel fields and promote Neon Auth admin when needed. */
+  async syncPersonnelProfile(
+    userId: string,
+    patch: { username?: string; display_name?: string; unit?: string; is_admin?: boolean },
+  ) {
+    if (!hasNeonConfig()) return;
+    const updates: Record<string, string | boolean> = {};
+    if (patch.username !== undefined) updates.username = patch.username;
+    if (patch.display_name !== undefined) updates.display_name = patch.display_name;
+    if (patch.unit !== undefined) updates.unit = patch.unit;
+    if (patch.is_admin !== undefined) updates.is_admin = patch.is_admin;
+    if (Object.keys(updates).length > 0) {
+      const { error } = await sb().from("profiles").update(updates).eq("id", userId);
+      if (error) throw error;
+    }
+    if (patch.is_admin) {
+      try {
+        const result = await neonBetterAuth().admin.setRole({ userId, role: "admin" });
+        if (result?.error?.message) throw new Error(result.error.message);
+      } catch (err) {
+        throw new Error(neonAdminErrorMessage(err, "設定 Neon Auth Admin 失敗"));
+      }
+    }
   },
 
   async addProjectMember(projectId: string, userId: string, role: Role): Promise<ProjectMember> {
@@ -223,9 +370,19 @@ export const cloudApi = {
   },
 
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {
-    const { data, error } = await sb().functions.invoke("invite-members", { body: { rows } });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    if (hasNeonConfig()) {
+      const creds = await createAccountsViaNeon(rows);
+      for (const row of rows) {
+        const email = row.email.trim().toLowerCase();
+        if (!email || !row.project_id) continue;
+        const profiles = await cloudApi.listProfiles();
+        const profile = profiles.find((p) => p.email.toLowerCase() === email);
+        if (!profile) continue;
+        await cloudApi.addProjectMember(row.project_id, profile.id, row.role ?? "member");
+      }
+      return creds;
+    }
+    const data = await invokeInviteMembers({ rows });
     return data.credentials as CredentialRow[];
   },
 
@@ -244,19 +401,61 @@ export const cloudApi = {
   },
 
   async resetPassword(userId: string) {
-    const { data, error } = await sb().functions.invoke("invite-members", {
-      body: { reset_user_id: userId },
-    });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    if (hasNeonConfig()) {
+      const me = await cloudApi.currentUser();
+      if (!me) throw new Error("尚未登入");
+      const target = (await cloudApi.listProfiles()).find((p) => p.id === userId);
+      if (!target) throw new Error("找不到這位人員");
+      if (target.is_admin && !me.is_admin) throw new Error("不能重設管理員密碼");
+      const canReset =
+        Boolean(me.is_admin) ||
+        (await cloudApi.listAllMembers()).some(
+          (m) => m.user_id === me.id && m.role === "leader",
+        );
+      if (!canReset) throw new Error("只有專案領導或管理員可以重設密碼");
+      try {
+        const result = await neonBetterAuth().admin.setUserPassword({
+          userId,
+          newPassword: DEFAULT_PASSWORD,
+        });
+        if (result?.error?.message) throw new Error(result.error.message);
+      } catch (err) {
+        throw new Error(neonAdminErrorMessage(err, "重設密碼失敗"));
+      }
+      return;
+    }
+    await invokeInviteMembers({ reset_user_id: userId });
   },
 
   async deletePerson(userId: string) {
-    const { data, error } = await sb().functions.invoke("invite-members", {
-      body: { delete_user_id: userId },
-    });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    if (hasNeonConfig()) {
+      const me = await cloudApi.currentUser();
+      if (!me) throw new Error("尚未登入");
+      if (userId === me.id) throw new Error("不能刪除自己");
+      const target = (await cloudApi.listProfiles()).find((p) => p.id === userId);
+      if (!target) throw new Error("找不到這位人員");
+      if (target.is_admin) throw new Error("不能刪除管理員");
+      if (!me.is_admin) {
+        const canDelete = (await cloudApi.listAllMembers()).some(
+          (m) => m.user_id === me.id && m.role === "leader",
+        );
+        if (!canDelete) throw new Error("只有專案領導或管理員可以刪除人員");
+      }
+      const client = sb();
+      await client.from("project_members").delete().eq("user_id", userId);
+      await client.from("tasks").update({ assignee_id: null }).eq("assignee_id", userId);
+      await client.from("projects").update({ created_by: me.id }).eq("created_by", userId);
+      const removed = await client.from("profiles").delete().eq("id", userId);
+      if (removed.error) throw removed.error;
+      try {
+        const result = await neonBetterAuth().admin.removeUser({ userId });
+        if (result?.error?.message) throw new Error(result.error.message);
+      } catch (err) {
+        throw new Error(neonAdminErrorMessage(err, "刪除 Neon 帳號失敗"));
+      }
+      return;
+    }
+    await invokeInviteMembers({ delete_user_id: userId });
   },
 
   async listTasks(projectId: string): Promise<Task[]> {

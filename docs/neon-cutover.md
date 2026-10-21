@@ -41,6 +41,16 @@ Clear unused `VITE_SUPABASE_*` after cutover.
 
 No `VITE_NEON_URL` and no `VITE_SUPABASE_*` → `awb-store-v1` / `localApi` unchanged.
 
+## Add Member / invite (Neon)
+
+Supabase Edge `invite-members` does **not** exist on Neon Auth (`client.functions` is undefined).  
+Production Add Member now uses Better Auth `admin.createUser` + `profiles` insert, password `DEFAULT_PASSWORD` (`abcd1234`).
+
+Prerequisites (already applied on the shared Neon project when this fix landed; re-run `neon/fix-add-member.sql` if needed):
+
+1. RLS: app Admins may insert/update/delete other `profiles` rows.
+2. Neon Auth role: each `profiles.is_admin` user must have `neon_auth.user.role = 'admin'` (or Neon Console → Auth → Users → **Make admin**).
+
 ## Albert checklist
 
 1. [x] Neon Auth + Data API (test login works).
@@ -49,6 +59,7 @@ No `VITE_NEON_URL` and no `VITE_SUPABASE_*` → `awb-store-v1` / `localApi` unch
 4. [ ] **Rotate Neon DB password** if the postgres URL was pasted in chat (Data API URL has no password).
 5. [ ] After merge to `main`: confirm production Pages deploy + smoke login on `/ks-sw-dashboard/`.
 6. [ ] Do **not** deploy the deprecated `api/` Worker.
+7. [ ] Smoke **+ ADD MEMBER** as Admin → new member logs in with `abcd1234`.
 
 ## Merge readiness
 
