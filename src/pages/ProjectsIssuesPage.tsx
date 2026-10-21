@@ -119,7 +119,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [moreOpen, setMoreOpen] = useState(false);
   const [addColOpen, setAddColOpen] = useState(false);
+  const [removeColOpen, setRemoveColOpen] = useState(false);
   const [newColLabel, setNewColLabel] = useState("");
+  const [removeColId, setRemoveColId] = useState("");
   const [extraColumns, setExtraColumns] = useState<ProjectColumn[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -136,7 +138,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [analyzed, setAnalyzed] = useState("");
   const [showNewIssue, setShowNewIssue] = useState(false);
 
+  const isAdmin = Boolean(user?.is_admin);
   const canCreate = Boolean(user?.is_admin || role === "leader");
+  const canManageColumns = isAdmin && mode === "list";
 
   const refreshProjectColumns = async () => {
     setExtraColumns(await api.listProjectColumns());
@@ -163,6 +167,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         p.eol_date,
         p.security_update,
         p.talent_policy,
+        p.owner,
         ...Object.values(p.custom ?? {}),
       ]
         .filter(Boolean)
@@ -194,6 +199,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
   const onAddProjectColumn = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isAdmin) {
+      setError("只有管理員可以新增欄位");
+      return;
+    }
     setError("");
     try {
       await runSave(async () => {
@@ -207,13 +216,26 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     }
   };
 
-  const onRemoveProjectColumn = async (columnId: string, label: string) => {
-    const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
+  const onRemoveProjectColumn = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!isAdmin) {
+      setError("只有管理員可以刪除欄位");
+      return;
+    }
+    const col = extraColumns.find((c) => c.id === removeColId);
+    if (!col) {
+      setError("請選擇要刪除的欄位");
+      return;
+    }
+    const ok = window.confirm(`Remove column “${col.label}”? Values will be deleted.`);
     if (!ok) return;
     setError("");
     try {
       await runSave(async () => {
-        await api.removeProjectColumn(columnId);
+        await api.removeProjectColumn(col.id);
+        setRemoveColId("");
+        setRemoveColOpen(false);
+        setMoreOpen(false);
         await refreshProjectColumns();
         await reload();
       });
@@ -389,7 +411,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
         <div className="pi-actions">
           <SavingIndicator status={saveStatus} />
-          {mode === "list" && (
+          {canManageColumns && (
             <div className="pi-add-col-wrap">
               <button
                 type="button"
@@ -397,6 +419,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                 aria-expanded={addColOpen}
                 onClick={() => {
                   setMoreOpen(false);
+                  setRemoveColOpen(false);
                   setAddColOpen((v) => !v);
                 }}
               >
@@ -409,7 +432,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     <input
                       value={newColLabel}
                       onChange={(e) => setNewColLabel(e.target.value)}
-                      placeholder="e.g. Owner"
+                      placeholder="e.g. Region"
                       autoFocus
                     />
                   </label>
@@ -432,10 +455,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
               className="pi-icon-btn"
               title="More actions"
               aria-label="More actions"
-              aria-expanded={moreOpen}
+              aria-expanded={moreOpen || removeColOpen}
               onClick={() => {
-                setMoreOpen((v) => !v);
                 setAddColOpen(false);
+                setRemoveColOpen(false);
+                setMoreOpen((v) => !v);
               }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -455,6 +479,20 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     }}
                   >
                     + New Project
+                  </button>
+                )}
+                {canManageColumns && extraColumns.length > 0 && (
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setAddColOpen(false);
+                      setRemoveColId(extraColumns[0]?.id ?? "");
+                      setRemoveColOpen(true);
+                    }}
+                  >
+                    Remove column…
                   </button>
                 )}
                 {mode === "detail" && canManage && (
@@ -484,6 +522,40 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   </button>
                 )}
               </div>
+            )}
+            {canManageColumns && removeColOpen && (
+              <form className="pi-add-popover" onSubmit={onRemoveProjectColumn}>
+                <label>
+                  Remove column
+                  <select
+                    value={removeColId}
+                    onChange={(e) => setRemoveColId(e.target.value)}
+                    aria-label="Column to remove"
+                    autoFocus
+                  >
+                    {extraColumns.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="pi-add-actions">
+                  <button
+                    type="button"
+                    className="pi-btn-ghost"
+                    onClick={() => {
+                      setRemoveColOpen(false);
+                      setRemoveColId("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="pi-btn-primary" disabled={!removeColId}>
+                    Remove
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         </div>
@@ -522,19 +594,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   <th key={col.key}>{col.label}</th>
                 ))}
                 {extraColumns.map((col) => (
-                  <th key={col.id}>
-                    <span className="pi-col-head">
-                      {col.label.toUpperCase()}
-                      <button
-                        type="button"
-                        className="pi-col-remove"
-                        title={`Remove ${col.label}`}
-                        onClick={() => void onRemoveProjectColumn(col.id, col.label)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  </th>
+                  <th key={col.id}>{col.label.toUpperCase()}</th>
                 ))}
                 <th>ACTIONS</th>
               </tr>

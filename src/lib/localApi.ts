@@ -422,6 +422,7 @@ export const localApi = {
       eol_date: "",
       security_update: "",
       talent_policy: "",
+      owner: "",
       custom: {},
     };
     store.projects.push(project);
@@ -447,6 +448,7 @@ export const localApi = {
       eol_date?: string;
       security_update?: string;
       talent_policy?: string;
+      owner?: string;
       custom?: Record<string, string>;
     },
   ): Project {
@@ -472,6 +474,7 @@ export const localApi = {
     if (patch.eol_date !== undefined) project.eol_date = patch.eol_date.trim();
     if (patch.security_update !== undefined) project.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) project.talent_policy = patch.talent_policy.trim();
+    if (patch.owner !== undefined) project.owner = patch.owner.trim();
     if (patch.custom !== undefined) {
       project.custom = { ...(project.custom ?? {}), ...patch.custom };
     }

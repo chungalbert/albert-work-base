@@ -12,9 +12,25 @@ export const PROJECT_BUILTIN_COLUMNS = [
   { key: "eol_date", label: "EOL DATE" },
   { key: "security_update", label: "SECURITY UPDATE" },
   { key: "talent_policy", label: "TALENT POLICY" },
+  { key: "owner", label: "OWNER" },
 ] as const;
 
 export type ProjectBuiltinKey = (typeof PROJECT_BUILTIN_COLUMNS)[number]["key"];
+
+const BUILTIN_LABELS = new Set(
+  PROJECT_BUILTIN_COLUMNS.map((c) => c.label.trim().toUpperCase()),
+);
+
+/** Reserved header labels that must never get a remove × (builtins + ACTIONS). */
+const RESERVED_HEADER_LABELS = new Set([...BUILTIN_LABELS, "ACTIONS"]);
+
+function normalizeLabel(label: string): string {
+  return label.trim().toUpperCase();
+}
+
+export function isReservedProjectColumnLabel(label: string): boolean {
+  return RESERVED_HEADER_LABELS.has(normalizeLabel(label));
+}
 
 export type ProjectFieldPatch = {
   name?: string;
@@ -27,6 +43,7 @@ export type ProjectFieldPatch = {
   eol_date?: string;
   security_update?: string;
   talent_policy?: string;
+  owner?: string;
   custom?: Record<string, string>;
 };
 
@@ -59,15 +76,63 @@ function save(state: ProjectsUiState) {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
+/**
+ * Drop custom columns whose labels collide with builtins (e.g. OWNER added via +ADD COLUMN).
+ * Migrate OWNER cell values into the builtin `owner` overlay field.
+ */
+function scrubReservedCustomColumns(state: ProjectsUiState): boolean {
+  const reserved = state.columns.filter((c) => isReservedProjectColumnLabel(c.label));
+  if (reserved.length === 0) return false;
+
+  const ownerCols = reserved.filter((c) => normalizeLabel(c.label) === "OWNER");
+  for (const col of ownerCols) {
+    for (const overlay of Object.values(state.overlays)) {
+      const fromCustom = overlay.custom?.[col.id];
+      if (fromCustom != null && fromCustom !== "" && (overlay.owner == null || overlay.owner === "")) {
+        overlay.owner = fromCustom;
+      }
+      if (overlay.custom && col.id in overlay.custom) {
+        const next = { ...overlay.custom };
+        delete next[col.id];
+        overlay.custom = next;
+      }
+    }
+  }
+
+  for (const col of reserved) {
+    if (normalizeLabel(col.label) === "OWNER") continue;
+    for (const overlay of Object.values(state.overlays)) {
+      if (overlay.custom && col.id in overlay.custom) {
+        const next = { ...overlay.custom };
+        delete next[col.id];
+        overlay.custom = next;
+      }
+    }
+  }
+
+  const reservedIds = new Set(reserved.map((c) => c.id));
+  state.columns = state.columns.filter((c) => !reservedIds.has(c.id));
+  return true;
+}
+
 export const projectsUiStore = {
   listColumns(): ProjectColumn[] {
-    return [...load().columns];
+    const state = load();
+    if (scrubReservedCustomColumns(state)) save(state);
+    return [...state.columns];
   },
 
   addColumn(label: string): ProjectColumn {
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
+    if (isReservedProjectColumnLabel(trimmed)) {
+      throw new Error(`「${trimmed}」是預設欄位，無法再新增`);
+    }
     const state = load();
+    scrubReservedCustomColumns(state);
+    if (state.columns.some((c) => normalizeLabel(c.label) === normalizeLabel(trimmed))) {
+      throw new Error("欄位名稱已存在");
+    }
     const col: ProjectColumn = { id: crypto.randomUUID(), label: trimmed };
     state.columns.push(col);
     save(state);
@@ -76,6 +141,12 @@ export const projectsUiStore = {
 
   removeColumn(columnId: string) {
     const state = load();
+    scrubReservedCustomColumns(state);
+    const target = state.columns.find((c) => c.id === columnId);
+    if (!target) return;
+    if (isReservedProjectColumnLabel(target.label)) {
+      throw new Error("預設欄位無法刪除");
+    }
     state.columns = state.columns.filter((c) => c.id !== columnId);
     for (const overlay of Object.values(state.overlays)) {
       if (overlay.custom && columnId in overlay.custom) {
@@ -101,6 +172,7 @@ export const projectsUiStore = {
       eol_date: overlay.eol_date ?? project.eol_date ?? "",
       security_update: overlay.security_update ?? project.security_update ?? "",
       talent_policy: overlay.talent_policy ?? project.talent_policy ?? "",
+      owner: overlay.owner ?? project.owner ?? "",
       custom: { ...(project.custom ?? {}), ...(overlay.custom ?? {}) },
     };
   },
@@ -124,6 +196,7 @@ export const projectsUiStore = {
     if (patch.eol_date !== undefined) next.eol_date = patch.eol_date.trim();
     if (patch.security_update !== undefined) next.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) next.talent_policy = patch.talent_policy.trim();
+    if (patch.owner !== undefined) next.owner = patch.owner.trim();
     if (patch.custom !== undefined) {
       next.custom = { ...(prev.custom ?? {}), ...patch.custom };
     }
