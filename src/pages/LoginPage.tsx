@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { hasSupabaseConfig } from "../lib/util";
+import { DEFAULT_PASSWORD, hasSupabaseConfig } from "../lib/util";
 import { api } from "../lib/api";
 
 export function LoginPage() {
@@ -159,7 +159,7 @@ export function LoginPage() {
         <section className="how-card">
           <h2>How to use</h2>
           <ol>
-            <li>Click <strong>Login</strong> — use the account or EMAIL from Personnel (e.g. lay). New users: password 123456</li>
+            <li>Click <strong>Login</strong> — use the account or EMAIL from Personnel (e.g. lay). New users: password {DEFAULT_PASSWORD}</li>
             <li>After login, use sidebar <strong>Change password</strong> anytime</li>
             <li>Leaders manage personnel and issues; members see their own work</li>
             <li>Dashboard summarizes open / alert / closed issues for the selected project filter</li>

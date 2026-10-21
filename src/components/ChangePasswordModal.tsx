@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
+import { DEFAULT_PASSWORD } from "../lib/util";
 
 export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState("");
@@ -35,7 +36,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     <div className="login-overlay" onClick={onClose}>
       <form className="login-card gate-card" onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>修改密碼</h2>
-        <p className="hint">任何人登入後都可以改自己的密碼。新開通帳號的預設密碼是 123456。</p>
+        <p className="hint">任何人登入後都可以改自己的密碼。新開通帳號的預設密碼是 {DEFAULT_PASSWORD}。</p>
         <div className="field">
           <label htmlFor="pw-current">目前密碼</label>
           <input
