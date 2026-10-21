@@ -19,7 +19,7 @@ type Profile = {
   is_admin: boolean;
 };
 
-const DEFAULT_PASSWORD = "123456";
+const DEFAULT_PASSWORD = "abcd1234";
 const SESSION_DAYS = 30;
 
 function corsHeaders(env: Env, req: Request): HeadersInit {

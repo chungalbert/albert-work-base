@@ -28,7 +28,7 @@ export function usernameFromEmail(email: string, taken: Set<string>): string {
   return candidate;
 }
 
-export const DEFAULT_PASSWORD = "123456";
+export const DEFAULT_PASSWORD = "abcd1234";
 
 export function randomPassword(): string {
   return DEFAULT_PASSWORD;

@@ -222,7 +222,7 @@ export const localApi = {
         return profile;
       }
     }
-    throw new Error("密碼不正確。預設密碼是 123456，請管理員到人員頁按「重設為 123456」。");
+    throw new Error(`密碼不正確。預設密碼是 ${DEFAULT_PASSWORD}，請管理員到人員頁按「重設為 ${DEFAULT_PASSWORD}」。`);
   },
 
   signOut() {

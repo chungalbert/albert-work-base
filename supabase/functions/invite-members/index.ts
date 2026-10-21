@@ -6,6 +6,8 @@ const cors = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const DEFAULT_PASSWORD = "abcd1234";
+
 function usernameFromEmail(email: string, taken: Set<string>) {
   const base =
     email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 24) ||
@@ -20,7 +22,7 @@ function usernameFromEmail(email: string, taken: Set<string>) {
 }
 
 function randomPassword() {
-  return "123456";
+  return DEFAULT_PASSWORD;
 }
 
 Deno.serve(async (req) => {
@@ -90,7 +92,7 @@ Deno.serve(async (req) => {
       const ok = (shared ?? []).some((r: { project_id: string }) => leadSet.has(r.project_id));
       if (!ok) return json({ error: "只有專案領導或管理員可以重設密碼" }, 403);
     }
-    const updated = await admin.auth.admin.updateUserById(resetUserId, { password: "123456" });
+    const updated = await admin.auth.admin.updateUserById(resetUserId, { password: DEFAULT_PASSWORD });
     if (updated.error) return json({ error: updated.error.message }, 400);
     return json({ ok: true });
   }
