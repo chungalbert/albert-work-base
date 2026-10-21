@@ -1,4 +1,5 @@
 import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
+import { credentialOrTransportMessage, isTransportFailure, NETWORK_MESSAGE } from "./loginError";
 import { getSupabase } from "./supabase";
 import type {
   AccountInput,
@@ -35,14 +36,19 @@ export const cloudApi = {
     const client = sb();
     let email = identifier.trim();
     if (!email.includes("@")) {
-      const { data, error } = await client.rpc("lookup_login_email", {
+      const lookedUp = await client.rpc("lookup_login_email", {
         identifier: email,
       });
-      if (error || !data) throw new Error("帳號或密碼不正確。");
-      email = data as string;
+      if (lookedUp.error || !lookedUp.data) {
+        throw new Error(credentialOrTransportMessage(lookedUp.error, lookedUp.status));
+      }
+      email = lookedUp.data as string;
     }
     const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message === "Invalid login credentials" ? "帳號或密碼不正確。" : error.message);
+    if (error) {
+      if (isTransportFailure(error)) throw new Error(NETWORK_MESSAGE);
+      throw new Error(error.message === "Invalid login credentials" ? "帳號或密碼不正確。" : error.message);
+    }
     const profile = await cloudApi.currentUser();
     if (!profile) throw new Error("找不到個人資料");
     return profile;
