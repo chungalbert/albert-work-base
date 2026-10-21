@@ -1,6 +1,7 @@
 import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { credentialOrTransportMessage, isTransportFailure, NETWORK_MESSAGE } from "./loginError";
 import { getSupabase } from "./supabase";
+import { isReservedProjectColumnLabel, type ProjectFieldPatch } from "./projectsUiStore";
 import type {
   AccountInput,
   CredentialRow,
@@ -10,12 +11,33 @@ import type {
   OtpVaultEntry,
   Profile,
   Project,
+  ProjectColumn,
   ProjectMember,
   Role,
   Task,
 } from "./types";
 import { normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
+
+function normalizeProjectRow(row: Project): Project {
+  const custom =
+    row.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
+      ? (row.custom as Record<string, string>)
+      : {};
+  return {
+    ...row,
+    lenovo_name: row.lenovo_name ?? "",
+    bios_id: row.bios_id ?? "",
+    platform: row.platform ?? "",
+    dis: row.dis ?? "",
+    ss_date: row.ss_date ?? "",
+    eol_date: row.eol_date ?? "",
+    security_update: row.security_update ?? "",
+    talent_policy: row.talent_policy ?? "",
+    owner: row.owner ?? "",
+    custom,
+  };
+}
 
 function normalizeTask(task: Task): Task {
   return {
@@ -246,7 +268,7 @@ export const cloudApi = {
   async listProjects(): Promise<Project[]> {
     const { data, error } = await sb().from("projects").select("*").order("created_at");
     if (error) throw error;
-    return data as Project[];
+    return (data as Project[]).map(normalizeProjectRow);
   },
 
   async createProject(name: string, description: string): Promise<Project> {
@@ -258,7 +280,106 @@ export const cloudApi = {
       .select()
       .single();
     if (error) throw error;
-    return data as Project;
+    return normalizeProjectRow(data as Project);
+  },
+
+  async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {
+    const projects = await cloudApi.listProjects();
+    const base = projects.find((p) => p.id === projectId);
+    if (!base) throw new Error("找不到專案");
+
+    const updates: Record<string, string | Record<string, string>> = {};
+    if (patch.name !== undefined) {
+      const name = patch.name.trim();
+      if (!name) throw new Error("專案名稱不能空白");
+      updates.name = name;
+    }
+    if (patch.description !== undefined) updates.description = patch.description.trim();
+    if (patch.lenovo_name !== undefined) updates.lenovo_name = patch.lenovo_name.trim();
+    if (patch.bios_id !== undefined) updates.bios_id = patch.bios_id.trim();
+    if (patch.platform !== undefined) updates.platform = patch.platform.trim();
+    if (patch.dis !== undefined) updates.dis = patch.dis.trim();
+    if (patch.ss_date !== undefined) updates.ss_date = patch.ss_date.trim();
+    if (patch.eol_date !== undefined) updates.eol_date = patch.eol_date.trim();
+    if (patch.security_update !== undefined) updates.security_update = patch.security_update.trim();
+    if (patch.talent_policy !== undefined) updates.talent_policy = patch.talent_policy.trim();
+    if (patch.owner !== undefined) updates.owner = patch.owner.trim();
+    if (patch.custom !== undefined) {
+      updates.custom = { ...(base.custom ?? {}), ...patch.custom };
+    }
+    if (Object.keys(updates).length === 0) return base;
+
+    const { data, error } = await sb()
+      .from("projects")
+      .update(updates)
+      .eq("id", projectId)
+      .select()
+      .single();
+    if (error) throw error;
+    return normalizeProjectRow(data as Project);
+  },
+
+  async listProjectColumns(): Promise<ProjectColumn[]> {
+    const { data, error } = await sb()
+      .from("project_columns")
+      .select("id, label, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as { id: string; label: string }[]).map((row) => ({
+      id: row.id,
+      label: row.label,
+    }));
+  },
+
+  async addProjectColumn(label: string, id?: string): Promise<ProjectColumn> {
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("欄位名稱不能空白");
+    if (isReservedProjectColumnLabel(trimmed)) {
+      throw new Error(`「${trimmed}」是預設欄位，無法再新增`);
+    }
+
+    const existing = await cloudApi.listProjectColumns();
+    if (existing.some((c) => c.label.trim().toUpperCase() === trimmed.toUpperCase())) {
+      throw new Error("欄位名稱已存在");
+    }
+
+    const { data: orderRows } = await sb().from("project_columns").select("sort_order");
+    const maxOrder = ((orderRows ?? []) as { sort_order: number }[]).reduce(
+      (max, row) => Math.max(max, Number(row.sort_order) || 0),
+      -1,
+    );
+
+    const row: Record<string, string | number | null> = {
+      label: trimmed,
+      sort_order: maxOrder + 1,
+      created_by: me.id,
+    };
+    if (id) row.id = id;
+
+    const { data, error } = await sb().from("project_columns").insert(row).select("id, label").single();
+    if (error) throw error;
+    return { id: (data as ProjectColumn).id, label: (data as ProjectColumn).label };
+  },
+
+  async removeProjectColumn(columnId: string) {
+    const { error } = await sb().from("project_columns").delete().eq("id", columnId);
+    if (error) throw error;
+
+    // Strip custom cell values for this column from every project (best-effort).
+    const projects = await cloudApi.listProjects();
+    for (const project of projects) {
+      if (!project.custom || !(columnId in project.custom)) continue;
+      const nextCustom = { ...project.custom };
+      delete nextCustom[columnId];
+      const { error: updateError } = await sb()
+        .from("projects")
+        .update({ custom: nextCustom })
+        .eq("id", project.id);
+      if (updateError) throw updateError;
+    }
   },
 
   async listLeaderProjectIds(): Promise<string[]> {
