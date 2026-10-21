@@ -13,7 +13,9 @@ import { addDaysISO, todayISO } from "../lib/dates";
 import {
   isStandardProjectColumnId,
   PROJECT_LOCKED_COLUMN,
+  projectsUiStore,
   standardKeyForColumn,
+  type ProjectFieldPatch,
   type ProjectStandardKey,
 } from "../lib/projectsUiStore";
 import {
@@ -31,6 +33,30 @@ import { useStore } from "../context/StoreContext";
 import { useSaveStatus } from "../lib/useSaveStatus";
 
 type StatusFilter = "all" | TaskStatus;
+
+function columnsSignature(columns: ProjectColumn[]): string {
+  return columns.map((c) => `${c.id}:${c.label}`).join("|");
+}
+
+function mergeProjectDraft(project: Project, patch: ProjectFieldPatch | undefined): Project {
+  if (!patch) return project;
+  return {
+    ...project,
+    name: patch.name !== undefined ? patch.name : project.name,
+    description: patch.description !== undefined ? patch.description : project.description,
+    lenovo_name: patch.lenovo_name !== undefined ? patch.lenovo_name : project.lenovo_name,
+    bios_id: patch.bios_id !== undefined ? patch.bios_id : project.bios_id,
+    platform: patch.platform !== undefined ? patch.platform : project.platform,
+    dis: patch.dis !== undefined ? patch.dis : project.dis,
+    ss_date: patch.ss_date !== undefined ? patch.ss_date : project.ss_date,
+    eol_date: patch.eol_date !== undefined ? patch.eol_date : project.eol_date,
+    security_update:
+      patch.security_update !== undefined ? patch.security_update : project.security_update,
+    talent_policy: patch.talent_policy !== undefined ? patch.talent_policy : project.talent_policy,
+    owner: patch.owner !== undefined ? patch.owner : project.owner,
+    custom: { ...(project.custom ?? {}), ...(patch.custom ?? {}) },
+  };
+}
 
 function shortId(id: string): string {
   return id.replace(/-/g, "").slice(0, 8).toUpperCase();
@@ -132,6 +158,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [removeColId, setRemoveColId] = useState("");
   /** Managed middle + custom columns (everything except Compal name + Actions). */
   const [managedColumns, setManagedColumns] = useState<ProjectColumn[]>([]);
+  /** Admin edit-mode draft: column membership + display order (not persisted until Save). */
+  const [editMode, setEditMode] = useState(false);
+  const [draftColumns, setDraftColumns] = useState<ProjectColumn[]>([]);
+  const [draftPatches, setDraftPatches] = useState<Record<string, ProjectFieldPatch>>({});
   const [columnsLoading, setColumnsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -152,7 +182,13 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
   const isAdmin = Boolean(user?.is_admin);
   const canCreate = Boolean(user?.is_admin || role === "leader");
-  const canManageColumns = isAdmin && mode === "list";
+  /** Column tools (+ ADD / Remove / reorder) only while Admin is in edit mode on the list. */
+  const canManageColumns = isAdmin && mode === "list" && editMode;
+  const visibleColumns = editMode ? draftColumns : managedColumns;
+  const editDirty =
+    editMode &&
+    (Object.keys(draftPatches).length > 0 ||
+      columnsSignature(draftColumns) !== columnsSignature(managedColumns));
 
   const refreshProjectColumns = async () => {
     try {
@@ -200,47 +236,110 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     return (project[key] as string | undefined) ?? "";
   };
 
-  const patchProjectField = async (projectId: string, patch: Parameters<typeof api.updateProject>[1]) => {
+  const setDraftField = (projectId: string, patch: ProjectFieldPatch) => {
+    setDraftPatches((prev) => {
+      const prior = prev[projectId] ?? {};
+      const next: ProjectFieldPatch = { ...prior, ...patch };
+      if (patch.custom !== undefined) {
+        next.custom = { ...(prior.custom ?? {}), ...patch.custom };
+      }
+      return { ...prev, [projectId]: next };
+    });
+  };
+
+  const closeColumnPopovers = () => {
+    setAddColOpen(false);
+    setRemoveColOpen(false);
+    setMoreOpen(false);
+    setNewColLabel("");
+    setRemoveColId("");
+  };
+
+  const enterEditMode = () => {
+    if (!isAdmin || mode !== "list") return;
     setError("");
-    setBusyId(projectId);
+    closeColumnPopovers();
+    setDraftColumns(managedColumns.map((c) => ({ ...c })));
+    setDraftPatches({});
+    setEditMode(true);
+  };
+
+  const exitEditModeLocal = () => {
+    setEditMode(false);
+    setDraftColumns([]);
+    setDraftPatches({});
+    closeColumnPopovers();
+  };
+
+  const cancelEditMode = async () => {
+    if (editDirty && !window.confirm("Discard unsaved project and column changes?")) return;
+    setError("");
+    setBusyId("edit-cancel");
     try {
-      await runSave(async () => {
-        await api.updateProject(projectId, patch);
-        await reload();
-      });
+      exitEditModeLocal();
+      setColumnsLoading(true);
+      await reload();
+      await refreshProjectColumns();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      setError(err instanceof Error ? err.message : "Reload failed");
     } finally {
       setBusyId("");
     }
   };
 
-  const onAddProjectColumn = async (event: FormEvent) => {
+  const saveEditMode = async () => {
+    if (!isAdmin || !editMode) return;
+    if (!editDirty) {
+      exitEditModeLocal();
+      return;
+    }
+    setError("");
+    setBusyId("edit-save");
+    const columnsChanged = columnsSignature(draftColumns) !== columnsSignature(managedColumns);
+    const patches = Object.entries(draftPatches);
+    try {
+      await runSave(async () => {
+        if (columnsChanged) {
+          await api.replaceProjectColumns(draftColumns);
+        }
+        if (patches.length > 0) {
+          await Promise.all(patches.map(([id, patch]) => api.updateProject(id, patch)));
+        }
+        await reload();
+        if (columnsChanged) await refreshProjectColumns();
+      });
+      exitEditModeLocal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const onAddProjectColumn = (event: FormEvent) => {
     event.preventDefault();
-    if (!isAdmin) {
-      setError("只有管理員可以新增欄位");
+    if (!isAdmin || !editMode) {
+      setError("只有管理員可以在編輯模式新增欄位");
       return;
     }
     setError("");
     try {
-      await runSave(async () => {
-        await api.addProjectColumn(newColLabel);
-        setNewColLabel("");
-        setAddColOpen(false);
-        await refreshProjectColumns();
-      });
+      const col = projectsUiStore.buildColumn(newColLabel, draftColumns);
+      setDraftColumns((prev) => [...prev, col]);
+      setNewColLabel("");
+      setAddColOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add column failed");
     }
   };
 
-  const onRemoveProjectColumn = async (event: FormEvent) => {
+  const onRemoveProjectColumn = (event: FormEvent) => {
     event.preventDefault();
-    if (!isAdmin) {
-      setError("只有管理員可以刪除欄位");
+    if (!isAdmin || !editMode) {
+      setError("只有管理員可以在編輯模式刪除欄位");
       return;
     }
-    const col = managedColumns.find((c) => c.id === removeColId);
+    const col = draftColumns.find((c) => c.id === removeColId);
     if (!col) {
       setError("請選擇要刪除的欄位");
       return;
@@ -249,25 +348,45 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     const ok = window.confirm(
       keepValues
         ? `Remove column “${col.label}”? You can re-add it later; existing cell values are kept.`
-        : `Remove column “${col.label}”? Values will be deleted.`,
+        : `Remove column “${col.label}”? Values will be deleted on Save.`,
     );
     if (!ok) return;
     setError("");
-    try {
-      await runSave(async () => {
-        await api.removeProjectColumn(col.id);
-        setRemoveColId("");
-        setRemoveColOpen(false);
-        setMoreOpen(false);
-        await refreshProjectColumns();
-        await reload();
+    setDraftColumns((prev) => prev.filter((c) => c.id !== col.id));
+    if (!keepValues) {
+      setDraftPatches((prev) => {
+        const next: Record<string, ProjectFieldPatch> = {};
+        for (const [id, patch] of Object.entries(prev)) {
+          if (!patch.custom || !(col.id in patch.custom)) {
+            next[id] = patch;
+            continue;
+          }
+          const custom = { ...patch.custom };
+          delete custom[col.id];
+          next[id] = { ...patch, custom };
+        }
+        return next;
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Remove column failed");
     }
+    setRemoveColId("");
+    setRemoveColOpen(false);
+    setMoreOpen(false);
   };
 
-  const listColSpan = 1 + managedColumns.length + 1;
+  const moveDraftColumn = (columnId: string, delta: -1 | 1) => {
+    setDraftColumns((prev) => {
+      const index = prev.findIndex((c) => c.id === columnId);
+      if (index < 0) return prev;
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
+      return next;
+    });
+  };
+
+  const listColSpan = 1 + visibleColumns.length + 1;
 
   const detailTasks = useMemo(() => {
     if (!project) return [] as Task[];
@@ -299,6 +418,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   const openProject = (id: string) => {
+    if (editMode) {
+      if (editDirty && !window.confirm("Leave edit mode and discard unsaved changes?")) return;
+      exitEditModeLocal();
+    }
     setProjectId(id);
     setMode("detail");
     setStatusFilter("all");
@@ -436,6 +559,36 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
           <div className="pi-status-slot">
             {listLoading ? <LoadingIndicator /> : <SavingIndicator status={saveStatus} />}
           </div>
+          {isAdmin && mode === "list" && !editMode && (
+            <button
+              type="button"
+              className="pi-add-col"
+              disabled={listLoading || busyId === "edit-save"}
+              onClick={enterEditMode}
+            >
+              Edit
+            </button>
+          )}
+          {isAdmin && mode === "list" && editMode && (
+            <>
+              <button
+                type="button"
+                className="pi-btn-ghost pi-edit-toolbar-btn"
+                disabled={busyId === "edit-save" || busyId === "edit-cancel"}
+                onClick={() => void cancelEditMode()}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="pi-btn-primary pi-edit-toolbar-btn"
+                disabled={busyId === "edit-save" || busyId === "edit-cancel"}
+                onClick={() => void saveEditMode()}
+              >
+                {busyId === "edit-save" ? "Saving…" : "Save"}
+              </button>
+            </>
+          )}
           {canManageColumns && (
             <div className="pi-add-col-wrap">
               <button
@@ -510,23 +663,23 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                   <button
                     type="button"
                     className="danger"
-                    disabled={managedColumns.length === 0}
-                    aria-disabled={managedColumns.length === 0}
+                    disabled={draftColumns.length === 0}
+                    aria-disabled={draftColumns.length === 0}
                     title={
-                      managedColumns.length === 0
+                      draftColumns.length === 0
                         ? "No removable columns. Add one with + ADD COLUMN first."
                         : "Remove a column (Compal name and Actions stay fixed)"
                     }
                     onClick={() => {
-                      if (managedColumns.length === 0) return;
+                      if (draftColumns.length === 0) return;
                       setMoreOpen(false);
                       setAddColOpen(false);
-                      setRemoveColId(managedColumns[0]?.id ?? "");
+                      setRemoveColId(draftColumns[0]?.id ?? "");
                       setRemoveColOpen(true);
                     }}
                   >
                     Remove column…
-                    {managedColumns.length === 0 && (
+                    {draftColumns.length === 0 && (
                       <span className="pi-menu-hint">No removable columns</span>
                     )}
                   </button>
@@ -569,7 +722,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     aria-label="Column to remove"
                     autoFocus
                   >
-                    {managedColumns.map((col) => (
+                    {draftColumns.map((col) => (
                       <option key={col.id} value={col.id}>
                         {col.label}
                       </option>
@@ -623,12 +776,40 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
       {mode === "list" ? (
         <div className="pi-table-wrap">
-          <table className="pi-table pi-project-table">
+          <table className={`pi-table pi-project-table${editMode ? " pi-project-table-editing" : ""}`}>
             <thead>
               <tr>
                 <th>{PROJECT_LOCKED_COLUMN.label}</th>
-                {managedColumns.map((col) => (
-                  <th key={col.id}>{col.label.toUpperCase()}</th>
+                {visibleColumns.map((col, index) => (
+                  <th key={col.id}>
+                    {editMode ? (
+                      <div className="pi-col-head">
+                        <span className="pi-col-head-label">{col.label.toUpperCase()}</span>
+                        <span className="pi-col-reorder">
+                          <button
+                            type="button"
+                            className="pi-col-move"
+                            aria-label={`Move ${col.label} left`}
+                            disabled={index === 0}
+                            onClick={() => moveDraftColumn(col.id, -1)}
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            className="pi-col-move"
+                            aria-label={`Move ${col.label} right`}
+                            disabled={index === visibleColumns.length - 1}
+                            onClick={() => moveDraftColumn(col.id, 1)}
+                          >
+                            →
+                          </button>
+                        </span>
+                      </div>
+                    ) : (
+                      col.label.toUpperCase()
+                    )}
+                  </th>
                 ))}
                 <th>ACTIONS</th>
               </tr>
@@ -648,24 +829,19 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                 </tr>
               ) : (
                 projectRows.map((project) => {
-                  const canEdit = leaderProjectIds.includes(project.id) || Boolean(user?.is_admin);
-                  const busy = busyId === project.id;
+                  const draft = mergeProjectDraft(project, editMode ? draftPatches[project.id] : undefined);
+                  const canEditFields = isAdmin && editMode;
+                  const busy = busyId === project.id || busyId === "edit-save";
                   return (
                     <tr key={project.id}>
                       <td>
-                        {canEdit ? (
+                        {canEditFields ? (
                           <input
                             className="pi-cell-input pi-cell-input-name"
-                            defaultValue={project.name}
-                            key={`${project.id}-name-${project.name}`}
+                            value={draft.name}
                             disabled={busy}
                             aria-label="Compal project name"
-                            onBlur={(e) => {
-                              const next = e.target.value.trim();
-                              if (next && next !== project.name) {
-                                void patchProjectField(project.id, { name: next });
-                              }
-                            }}
+                            onChange={(e) => setDraftField(project.id, { name: e.target.value })}
                           />
                         ) : (
                           <button
@@ -673,31 +849,27 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                             className="pi-proj-link"
                             onClick={() => openProject(project.id)}
                           >
-                            {project.name || "—"}
+                            {draft.name || "—"}
                           </button>
                         )}
                       </td>
-                      {managedColumns.map((col) => {
+                      {visibleColumns.map((col) => {
                         const stdKey = standardKeyForColumn(col);
                         if (stdKey) {
-                          const value = standardFieldValue(project, stdKey);
+                          const value = standardFieldValue(draft, stdKey);
                           const isDate = stdKey === "ss_date" || stdKey === "eol_date";
                           return (
                             <td key={col.id}>
-                              {canEdit ? (
+                              {canEditFields ? (
                                 <input
                                   className="pi-cell-input"
                                   type={isDate ? "date" : "text"}
-                                  defaultValue={value}
-                                  key={`${project.id}-${stdKey}-${value}`}
+                                  value={value}
                                   disabled={busy}
                                   aria-label={col.label}
-                                  onBlur={(e) => {
-                                    const next = e.target.value.trim();
-                                    if (next !== value) {
-                                      void patchProjectField(project.id, { [stdKey]: next });
-                                    }
-                                  }}
+                                  onChange={(e) =>
+                                    setDraftField(project.id, { [stdKey]: e.target.value } as ProjectFieldPatch)
+                                  }
                                 />
                               ) : (
                                 <span className="pi-cell-text">{value || "—"}</span>
@@ -705,22 +877,18 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                             </td>
                           );
                         }
-                        const value = project.custom?.[col.id] ?? "";
+                        const value = draft.custom?.[col.id] ?? "";
                         return (
                           <td key={col.id}>
-                            {canEdit ? (
+                            {canEditFields ? (
                               <input
                                 className="pi-cell-input"
-                                defaultValue={value}
-                                key={`${project.id}-${col.id}-${value}`}
+                                value={value}
                                 disabled={busy}
                                 aria-label={col.label}
-                                onBlur={(e) => {
-                                  const next = e.target.value;
-                                  if (next !== value) {
-                                    void patchProjectField(project.id, { custom: { [col.id]: next } });
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  setDraftField(project.id, { custom: { [col.id]: e.target.value } })
+                                }
                               />
                             ) : (
                               <span className="pi-cell-text">{value || "—"}</span>

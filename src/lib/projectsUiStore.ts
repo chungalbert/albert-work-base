@@ -333,21 +333,27 @@ export const projectsUiStore = {
     return [...state.columns];
   },
 
-  addColumn(label: string): ProjectColumn {
+  /** Build a column def without persisting (Admin edit-mode draft). */
+  buildColumn(label: string, existing: ProjectColumn[]): ProjectColumn {
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
       throw new Error(`「${trimmed}」是固定欄位，無法再新增`);
     }
-    const state = load();
-    prepareState(state);
-    if (state.columns.some((c) => normalizeLabel(c.label) === normalizeLabel(trimmed))) {
+    if (existing.some((c) => normalizeLabel(c.label) === normalizeLabel(trimmed))) {
       throw new Error("欄位名稱已存在");
     }
     const std = findStandardProjectColumn(trimmed);
-    const col: ProjectColumn = std
-      ? { id: std.id, label: std.label }
-      : { id: crypto.randomUUID(), label: trimmed };
+    if (std && existing.some((c) => c.id === std.id)) {
+      throw new Error("欄位名稱已存在");
+    }
+    return std ? { id: std.id, label: std.label } : { id: crypto.randomUUID(), label: trimmed };
+  },
+
+  addColumn(label: string): ProjectColumn {
+    const state = load();
+    prepareState(state);
+    const col = projectsUiStore.buildColumn(label, state.columns);
     state.columns.push(col);
     save(state);
     return col;
@@ -373,6 +379,41 @@ export const projectsUiStore = {
       }
     }
     save(state);
+  },
+
+  /**
+   * Replace managed column defs + display order in one write (Admin Save).
+   * Strips custom cell overlays for removed non-standard columns.
+   */
+  replaceColumns(columns: ProjectColumn[]): ProjectColumn[] {
+    const state = load();
+    prepareState(state);
+    const next = normalizeManagedColumns(columns);
+    const labels = new Set<string>();
+    for (const col of next) {
+      const key = normalizeLabel(col.label);
+      if (!col.id || !col.label.trim()) throw new Error("欄位定義不完整");
+      if (isReservedProjectColumnLabel(col.label)) {
+        throw new Error(`「${col.label}」是固定欄位，無法再新增`);
+      }
+      if (labels.has(key)) throw new Error("欄位名稱已存在");
+      labels.add(key);
+    }
+    const prevIds = new Set(state.columns.map((c) => c.id));
+    const nextIds = new Set(next.map((c) => c.id));
+    for (const id of prevIds) {
+      if (nextIds.has(id) || isStandardProjectColumnId(id)) continue;
+      for (const overlay of Object.values(state.overlays)) {
+        if (overlay.custom && id in overlay.custom) {
+          const custom = { ...overlay.custom };
+          delete custom[id];
+          overlay.custom = custom;
+        }
+      }
+    }
+    state.columns = next;
+    save(state);
+    return [...state.columns];
   },
 
   mergeProject(project: Project): Project {

@@ -452,6 +452,20 @@ export const api = {
       throw err;
     }
   },
+  /** Admin Save: persist full managed column list + display order. */
+  async replaceProjectColumns(columns: ProjectColumn[]): Promise<ProjectColumn[]> {
+    if (!hasSupabaseConfig()) {
+      return projectsUiStore.replaceColumns(columns);
+    }
+    try {
+      return await withProjectColumnsRetry(() => cloudApi.replaceProjectColumns(columns));
+    } catch (err) {
+      if (isProjectColumnsUnavailableError(err)) {
+        throw new Error(projectColumnsUnavailableMessage(err));
+      }
+      throw err;
+    }
+  },
   async listLeaderProjectIds(): Promise<string[]> {
     if (hasSupabaseConfig()) return cloudApi.listLeaderProjectIds();
     return localApi.listLeaderProjectIds();
