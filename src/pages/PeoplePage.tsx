@@ -86,7 +86,9 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         profile,
         projectIds,
         projectNames,
-        projectCount: projectNames.length,
+        // Count memberships, not resolved names — a transient empty projects list
+        // must not paint every row as Unassigned when allMembers is already populated.
+        projectCount: projectIds.length,
         role: normalizePersonnelRole(profile),
         issues,
       };
@@ -663,7 +665,9 @@ function PersonRow({
             ) : (
               <>
                 <span>{projectCount} project{projectCount === 1 ? "" : "s"}</span>
-                <span className="personnel-project-names">{projectNames.join(", ")}</span>
+                {projectNames.length > 0 && (
+                  <span className="personnel-project-names">{projectNames.join(", ")}</span>
+                )}
               </>
             )}
             <span className="personnel-edit-icon" aria-hidden="true">✎</span>

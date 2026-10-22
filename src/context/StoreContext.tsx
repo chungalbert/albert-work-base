@@ -84,14 +84,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         prev.length > 0 &&
         hasLoadedOnce.current &&
         !options?.allowEmpty;
-      const resolvedProjects = retainPrior ? prev : nextProjects;
+      let resolvedProjects = retainPrior ? prev : nextProjects;
+
+      // Neon Data API can briefly return only __kssw_meta__ (app filters to []) right after
+      // auth while project_members/tasks already include real projects. Publishing that
+      // empty list strips allMembers by visibility → Personnel shows Unassigned for everyone.
+      const memberProjectIds = new Set(nextAllMembers.map((m) => m.project_id));
+      const projectsLookIncomplete = () => {
+        if (options?.allowEmpty) return false;
+        if (resolvedProjects.length === 0) {
+          return nextAllMembers.length > 0 || nextAllTasks.length > 0;
+        }
+        // +1 allows the hidden meta membership row that listProjects never returns.
+        return memberProjectIds.size > resolvedProjects.length + 1;
+      };
+      for (let attempt = 0; attempt < 4 && projectsLookIncomplete(); attempt += 1) {
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+        if (gen !== reloadGen.current) return;
+        const retried = await api.listProjects();
+        if (gen !== reloadGen.current) return;
+        if (retried.length > resolvedProjects.length) {
+          resolvedProjects = retried;
+        } else if (retried.length > 0 && resolvedProjects.length === 0) {
+          resolvedProjects = retried;
+        }
+      }
 
       const visible = new Set(resolvedProjects.map((project) => project.id));
       setProjects(resolvedProjects);
       setProfiles(nextProfiles);
       setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
       setLeaderProjectIds(nextLeaderIds);
-      setAllMembers(nextAllMembers.filter((member) => visible.has(member.project_id)));
+      // When projects are still empty after retries, keep memberships so Personnel can
+      // show counts instead of a false all-Unassigned state.
+      setAllMembers(
+        resolvedProjects.length === 0
+          ? nextAllMembers
+          : nextAllMembers.filter((member) => visible.has(member.project_id)),
+      );
       const current = projectIdRef.current;
       const selected =
         current === ALL_PROJECTS_ID
