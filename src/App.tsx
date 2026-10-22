@@ -133,7 +133,7 @@ function NavIcon({ name }: { name: string }) {
 
 function Shell() {
   const { user, signOut } = useAuth();
-  const { projects, projectId, setProjectId, role } = useStore();
+  const { projects, projectId, setProjectId, role, initialLoading, loadError } = useStore();
   const [view, setView] = useState<ViewId>("home");
   const [showPassword, setShowPassword] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -255,12 +255,19 @@ function Shell() {
                   value={projectId ?? ""}
                   onChange={(e) => setProjectId(e.target.value)}
                   aria-label="Project filter"
+                  disabled={initialLoading}
                 >
-                  {projects.length === 0 && <option value="">No projects</option>}
-                  {projects.length > 0 && <option value={ALL_PROJECTS_ID}>All Projects</option>}
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {initialLoading && <option value="">載入中…</option>}
+                  {!initialLoading && projects.length === 0 && (
+                    <option value="">{loadError ? "載入失敗" : "No projects"}</option>
+                  )}
+                  {!initialLoading && projects.length > 0 && (
+                    <option value={ALL_PROJECTS_ID}>All Projects</option>
+                  )}
+                  {!initialLoading &&
+                    projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                 </select>
               ) : null
             }

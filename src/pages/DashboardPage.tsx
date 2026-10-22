@@ -22,7 +22,7 @@ function shortId(id: string): string {
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const { tasks, projectName } = useStore();
+  const { tasks, projectName, initialLoading, loadError } = useStore();
   const today = todayISO();
   const [cursor, setCursor] = useState(() => parseISODate(today));
   const [selected, setSelected] = useState(today);
@@ -131,7 +131,13 @@ export function DashboardPage() {
               <tbody>
                 {openItems.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="dash-empty">No issues found.</td>
+                    <td colSpan={4} className="dash-empty">
+                      {initialLoading
+                        ? "載入中…"
+                        : loadError
+                          ? "Failed to load issues."
+                          : "No issues found."}
+                    </td>
                   </tr>
                 ) : (
                   openItems.slice(0, 12).map((task) => (
@@ -160,7 +166,13 @@ export function DashboardPage() {
             </h2>
           </header>
           {alertItems.length === 0 ? (
-            <div className="dash-empty-box">No open or working alert issues.</div>
+            <div className="dash-empty-box">
+              {initialLoading
+                ? "載入中…"
+                : loadError
+                  ? "Failed to load issues."
+                  : "No open or working alert issues."}
+            </div>
           ) : (
             <ul className="dash-alert-list">
               {alertItems.slice(0, 8).map((task) => (
