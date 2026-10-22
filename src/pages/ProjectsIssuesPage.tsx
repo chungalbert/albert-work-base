@@ -652,18 +652,6 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
             </button>
             {moreOpen && (
               <div className="pi-popover pi-popover-menu">
-                {isAdmin && mode === "list" && !editMode && (
-                  <button
-                    type="button"
-                    disabled={listLoading || busyId === "edit-save"}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      enterEditMode();
-                    }}
-                  >
-                    Edit projects…
-                  </button>
-                )}
                 {mode === "list" && canCreate && (
                   <button
                     type="button"
