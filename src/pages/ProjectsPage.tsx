@@ -48,7 +48,7 @@ export function ProjectsPage() {
     setBusyId(id);
     try {
       await api.deleteProject(id);
-      await reload();
+      await reload({ allowEmpty: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "刪除失敗");
     } finally {

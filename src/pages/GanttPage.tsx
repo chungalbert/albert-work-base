@@ -165,7 +165,7 @@ export function GanttPage() {
             start_date: formatISODate(start),
             due_date: formatISODate(end),
           })
-          .then(reload);
+          .then(() => reload());
       },
     }) as GanttChart;
 

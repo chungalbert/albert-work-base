@@ -138,6 +138,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     projectId,
     project,
     reload,
+    patchProjectsLocal,
     role,
     allTasks,
     profiles,
@@ -273,20 +274,12 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     closeColumnPopovers();
   };
 
-  const cancelEditMode = async () => {
+  const cancelEditMode = () => {
     if (editDirty && !window.confirm("Discard unsaved project and column changes?")) return;
     setError("");
-    setBusyId("edit-cancel");
-    try {
-      exitEditModeLocal();
-      setColumnsLoading(true);
-      await reload();
-      await refreshProjectColumns();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Reload failed");
-    } finally {
-      setBusyId("");
-    }
+    // Drafts are local only — discard without store reload / columnsLoading so the
+    // list never blanks or trips PageLoadingGate after leaving edit mode.
+    exitEditModeLocal();
   };
 
   const saveEditMode = async () => {
@@ -299,18 +292,32 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setBusyId("edit-save");
     const columnsChanged = columnsSignature(draftColumns) !== columnsSignature(managedColumns);
     const patches = Object.entries(draftPatches);
+    const savedColumns = draftColumns.map((c) => ({ ...c }));
+    const savedPatches = { ...draftPatches };
     try {
       await runSave(async () => {
         if (columnsChanged) {
-          await api.replaceProjectColumns(draftColumns);
+          await api.replaceProjectColumns(savedColumns);
         }
         if (patches.length > 0) {
           await Promise.all(patches.map(([id, patch]) => api.updateProject(id, patch)));
         }
+      });
+      // Keep rows visible immediately: apply drafts locally, then soft-refresh.
+      // Do not set columnsLoading / initialLoading — that was wiping the list.
+      if (columnsChanged) setManagedColumns(savedColumns);
+      if (Object.keys(savedPatches).length > 0) {
+        patchProjectsLocal((prev) =>
+          prev.map((p) => mergeProjectDraft(p, savedPatches[p.id])),
+        );
+      }
+      exitEditModeLocal();
+      try {
         await reload();
         if (columnsChanged) await refreshProjectColumns();
-      });
-      exitEditModeLocal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Reload failed");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -467,7 +474,8 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
       await runSave(async () => {
         await api.deleteProject(id);
         if (mode === "detail" && projectId === id) backToList();
-        await reload();
+        // Last-project delete must be allowed to settle as a real empty list.
+        await reload({ allowEmpty: true });
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -578,15 +586,15 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
               <button
                 type="button"
                 className="pi-btn-ghost pi-edit-toolbar-btn"
-                disabled={busyId === "edit-save" || busyId === "edit-cancel"}
-                onClick={() => void cancelEditMode()}
+                disabled={busyId === "edit-save"}
+                onClick={cancelEditMode}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className="pi-btn-primary pi-edit-toolbar-btn"
-                disabled={busyId === "edit-save" || busyId === "edit-cancel"}
+                disabled={busyId === "edit-save"}
                 onClick={() => void saveEditMode()}
               >
                 {busyId === "edit-save" ? "Saving…" : "Save"}
@@ -1124,7 +1132,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                               type="button"
                               className="pi-linkish danger"
                               onClick={() => {
-                                if (window.confirm("Delete this issue?")) void api.deleteTask(task.id).then(reload);
+                                if (window.confirm("Delete this issue?")) {
+                                  void api.deleteTask(task.id).then(() => reload());
+                                }
                               }}
                             >
                               Delete
