@@ -14,6 +14,8 @@ import { WheaToolPage } from "./pages/WheaToolPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { InvPcrPage } from "./pages/InvPcrPage";
 import { AppToolbar } from "./components/AppToolbar";
+import { LoadingIndicator } from "./components/LoadingIndicator";
+import { PageLoadingGate, viewNeedsStoreBoot } from "./components/PageLoadingGate";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import type { ViewId } from "./lib/types";
@@ -295,46 +297,59 @@ function Shell() {
         <main
           className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}`}
         >
-          {!hideChrome &&
-            currentView !== "guides" &&
-            currentView !== "tool" &&
-            currentView !== "security" &&
-            currentView !== "inv-pcr" && <ReminderBanner />}
-          {currentView === "home" && <DashboardPage />}
-          {currentView === "projects" && (
-            <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
-          )}
-          {currentView === "people" && (
-            <PeoplePage onGoDashboard={() => setView("home")} />
-          )}
-          {currentView === "gantt" && (
-            <Suspense fallback={<p className="hint">Loading schedule…</p>}>
-              <GanttPage />
-            </Suspense>
-          )}
-          {currentView === "security" && <SecurityPage />}
-          {currentView === "inv-pcr" && <InvPcrPage />}
-          {currentView === "guides" && <GuidesPage />}
-          {currentView === "notes" && (
-            <NotesPage onGoDashboard={() => setView("home")} />
-          )}
-          {currentView === "chat" && (
-            <ChatPage onGoDashboard={() => setView("home")} />
-          )}
-          {currentView === "tool" && (
-            <ToolPage
-              onOpenOtp={() => setView("otp")}
-              onOpenWhea={() => setView("whea")}
-            />
-          )}
-          {currentView === "otp" && (
-            <OtpVaultPage
-              onGoDashboard={() => setView("tool")}
-              ownerId={user?.username}
-            />
-          )}
-          {currentView === "whea" && (
-            <WheaToolPage onBack={() => setView("tool")} />
+          {viewNeedsStoreBoot(currentView) ? (
+            <PageLoadingGate>
+              {!hideChrome &&
+                currentView !== "guides" &&
+                currentView !== "tool" &&
+                currentView !== "security" &&
+                currentView !== "inv-pcr" && <ReminderBanner />}
+              {currentView === "home" && <DashboardPage />}
+              {currentView === "projects" && (
+                <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "people" && (
+                <PeoplePage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "gantt" && (
+                <Suspense
+                  fallback={
+                    <div className="page-loading-gate" role="status" aria-busy="true">
+                      <LoadingIndicator />
+                    </div>
+                  }
+                >
+                  <GanttPage />
+                </Suspense>
+              )}
+            </PageLoadingGate>
+          ) : (
+            <>
+              {currentView === "security" && <SecurityPage />}
+              {currentView === "inv-pcr" && <InvPcrPage />}
+              {currentView === "guides" && <GuidesPage />}
+              {currentView === "notes" && (
+                <NotesPage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "chat" && (
+                <ChatPage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "tool" && (
+                <ToolPage
+                  onOpenOtp={() => setView("otp")}
+                  onOpenWhea={() => setView("whea")}
+                />
+              )}
+              {currentView === "otp" && (
+                <OtpVaultPage
+                  onGoDashboard={() => setView("tool")}
+                  ownerId={user?.username}
+                />
+              )}
+              {currentView === "whea" && (
+                <WheaToolPage onBack={() => setView("tool")} />
+              )}
+            </>
           )}
         </main>
       </div>
@@ -349,7 +364,9 @@ export default function App() {
   if (loading) {
     return (
       <div className="app landing-app">
-        <p className="hint" style={{ padding: 40 }}>Loading…</p>
+        <div className="page-loading-gate" role="status" aria-busy="true">
+          <LoadingIndicator />
+        </div>
       </div>
     );
   }
