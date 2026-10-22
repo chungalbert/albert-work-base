@@ -1323,16 +1323,21 @@ export const cloudApi = {
       updated_at: now,
       waves,
     };
-    let { data, error } = await sb().from("security_cycles").insert(baseRow).select().single();
-    // Pre-migration: waves column missing from Data API cache / schema.
-    if (error && /waves/i.test(String(error.message ?? ""))) {
-      delete baseRow.waves;
-      const retry = await sb().from("security_cycles").insert(baseRow).select().single();
-      data = retry.data;
-      error = retry.error;
+    const { data, error } = await sb().from("security_cycles").insert(baseRow).select().single();
+    if (error) {
+      const msg = String(error.message ?? error);
+      if (/waves/i.test(msg) || /PGRST204|PGRST205|schema cache/i.test(msg)) {
+        throw new Error(
+          "Neon 尚未載入 security_cycles.waves。請在 Neon Console → Data API 按 Refresh schema cache 後重試（勿省略 waves，否則無法新增/重新命名 Wave）。",
+        );
+      }
+      throw error;
     }
-    if (error) throw error;
-    const cycle = mapSecurityCycle(data as Record<string, unknown>);
+    const cycle = {
+      ...mapSecurityCycle(data as Record<string, unknown>),
+      waves,
+      ...legacy,
+    };
     if (input.projects.length > 0) {
       const rows = input.projects.map((p, i) => ({
         cycle_id: cycle.id,
@@ -1368,26 +1373,28 @@ export const cloudApi = {
       project_ids: projectIds,
       updated_at: new Date().toISOString(),
     };
-    let { data, error } = await sb()
+    const { data, error } = await sb()
       .from("security_cycles")
       .update(updates)
       .eq("id", cycleId)
       .select()
       .single();
-    if (error && /waves/i.test(String(error.message ?? ""))) {
-      delete updates.waves;
-      const retry = await sb()
-        .from("security_cycles")
-        .update(updates)
-        .eq("id", cycleId)
-        .select()
-        .single();
-      data = retry.data;
-      error = retry.error;
+    if (error) {
+      const msg = String(error.message ?? error);
+      if (/waves/i.test(msg) || /PGRST204|PGRST205|schema cache/i.test(msg)) {
+        throw new Error(
+          "Neon 尚未載入 security_cycles.waves。請在 Neon Console → Data API 按 Refresh schema cache 後重試（勿省略 waves，否則無法新增/重新命名 Wave）。",
+        );
+      }
+      throw error;
     }
-    if (error) throw error;
 
-    const mapped = mapSecurityCycle(data as Record<string, unknown>);
+    // Prefer the waves we just wrote — PostgREST may omit jsonb until cache refresh.
+    const mapped = {
+      ...mapSecurityCycle(data as Record<string, unknown>),
+      waves,
+      ...legacyDatesFromWaves(waves),
+    };
     const allowed = new Set(mapped.waves.map((w) => w.name));
     const wanted = new Set(projectIds);
 

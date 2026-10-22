@@ -5328,25 +5328,45 @@ select.pi-state {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 10px;
 }
+.sec-wave-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
 .sec-wave-field-label {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
 }
 .sec-wave-name-input {
   flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--sec-muted);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0;
   min-width: 0;
+  border: 1px solid var(--sec-line);
+  background: var(--input-bg);
+  color: var(--sec-text);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
 }
 .sec-wave-name-input:focus {
-  color: var(--sec-text);
   outline: none;
+  border-color: var(--sec-link);
+}
+.sec-wave-date-input {
+  border: 1px solid var(--sec-line);
+  background: var(--input-bg);
+  color: var(--sec-text);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color-scheme: dark;
+  width: 100%;
+}
+.sec-wave-date-input:focus {
+  outline: none;
+  border-color: var(--sec-link);
 }
 @media (max-width: 960px) {
   .sec-cycle-actions {
