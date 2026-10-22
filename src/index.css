@@ -4839,22 +4839,47 @@ select.pi-state {
   gap: 8px;
   max-width: 100%;
 }
-.sec-wave-cell select,
-.sec-person-cell select,
-.sec-status-pill select {
-  border: none;
-  background: transparent;
+.sec-lenovo-name {
+  color: var(--sec-muted);
+  font-size: 13px;
+}
+.sec-wave-cell select.sec-roster-select,
+.sec-person-cell select.sec-roster-select,
+.sec-status-pill select.sec-roster-select,
+.sec-roster-table select.sec-roster-select {
+  border: 1px solid var(--sec-line);
+  background-color: var(--input-bg);
   color: var(--sec-text);
-  padding: 0;
+  color-scheme: dark;
+  padding: 4px 8px;
+  border-radius: 8px;
   cursor: pointer;
   outline: none;
-  max-width: 140px;
+  max-width: 180px;
+  min-width: 7rem;
+  appearance: auto;
+}
+.sec-wave-cell select.sec-roster-select:focus,
+.sec-person-cell select.sec-roster-select:focus,
+.sec-status-pill select.sec-roster-select:focus,
+.sec-roster-table select.sec-roster-select:focus {
+  border-color: var(--sec-link);
+}
+.sec-roster-select option,
+.sec-roster-table option {
+  color: var(--sec-text);
+  background-color: var(--sec-panel);
 }
 .sec-status-pill {
   border: 1px solid var(--sec-line);
   background: var(--input-bg);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 2px 6px;
+}
+.sec-status-pill select.sec-roster-select {
+  border: none;
+  background: transparent;
+  max-width: 160px;
 }
 .sec-avatar {
   width: 22px;
