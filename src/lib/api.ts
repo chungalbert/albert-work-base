@@ -576,6 +576,7 @@ export const api = {
           display_name,
           unit: phone,
           is_admin: personnel_role === "Admin",
+          personnel_role,
         });
         const refreshed = await cloudApi.listProfiles();
         profile = refreshed.find((p) => p.id === profile!.id) ?? profile;
@@ -649,16 +650,29 @@ export const api = {
     const profiles = await cloudApi.listProfiles();
     const base = profiles.find((p) => p.id === userId);
     if (!base) throw new Error("找不到這位人員");
-    // Neon: keep profiles.is_admin in sync when Personnel role changes (Edit / column gates).
-    if (hasNeonConfig() && patch.personnel_role !== undefined) {
-      await cloudApi.syncPersonnelProfile(userId, {
-        display_name: patch.display_name,
-        unit: patch.unit,
-        is_admin: patch.personnel_role === "Admin",
-      });
+    // Neon: persist Personnel fields on profiles (role was previously localStorage-only).
+    if (hasNeonConfig()) {
+      const neonPatch: {
+        display_name?: string;
+        unit?: string;
+        is_admin?: boolean;
+        personnel_role?: PersonnelRole;
+      } = {};
+      if (patch.display_name !== undefined) neonPatch.display_name = patch.display_name;
+      if (patch.unit !== undefined) neonPatch.unit = patch.unit;
+      if (patch.personnel_role !== undefined) {
+        neonPatch.personnel_role = patch.personnel_role;
+        neonPatch.is_admin = patch.personnel_role === "Admin";
+      }
+      if (Object.keys(neonPatch).length > 0) {
+        await cloudApi.syncPersonnelProfile(userId, neonPatch);
+      }
     }
     const refreshed =
-      hasNeonConfig() && patch.personnel_role !== undefined
+      hasNeonConfig() &&
+      (patch.personnel_role !== undefined ||
+        patch.display_name !== undefined ||
+        patch.unit !== undefined)
         ? ((await cloudApi.listProfiles()).find((p) => p.id === userId) ?? base)
         : base;
     return personnelUiStore.applyOverlay(userId, refreshed, patch);

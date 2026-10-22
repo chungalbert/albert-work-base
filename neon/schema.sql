@@ -10,8 +10,12 @@ create table if not exists public.profiles (
   unit text not null default '',
   email text not null,
   is_admin boolean not null default false,
+  personnel_role text not null default 'DE'
+    check (personnel_role in ('Admin', 'DM', 'DL', 'DE')),
   created_at timestamptz not null default now()
 );
+
+-- Incremental DBs created before personnel_role: see neon/personnel-role.sql.
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
