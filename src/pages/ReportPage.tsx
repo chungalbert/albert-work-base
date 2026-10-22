@@ -42,7 +42,7 @@ export function ReportPage() {
     }
     downloadText(
       `weekly-report-${weekStart}.html`,
-      `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>週報</title><style>${css.join("\n")}</style></head><body style="background:#0b1220;color:#f4f7fb;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;padding:24px">${html}</body></html>`,
+      `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>週報</title><style>${css.join("\n")}</style></head><body style="background:#202124;color:#e8eaed;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;padding:24px">${html}</body></html>`,
       "text/html;charset=utf-8",
     );
   };
