@@ -524,6 +524,12 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   };
 
   const canManage = Boolean(project && (isAdmin || role === "leader"));
+  const canDeleteProject = Boolean(
+    mode === "detail" && project && leaderProjectIds.includes(project.id),
+  );
+  /** ⋯ only when it has at least one action (list create/remove-col, or detail delete). */
+  const showOverflowMenu =
+    (mode === "list" && canCreate) || canManageColumns || canDeleteProject;
 
   return (
     <div className="pi-page">
@@ -601,6 +607,22 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
               </button>
             </>
           )}
+          {mode === "detail" && canManage && (
+            <button
+              type="button"
+              className="pi-btn-primary pi-edit-entry-btn"
+              title="Create a new issue on this project"
+              aria-label="New Issue"
+              onClick={() => {
+                setMoreOpen(false);
+                setAddColOpen(false);
+                setRemoveColOpen(false);
+                setShowNewIssue(true);
+              }}
+            >
+              + New Issue
+            </button>
+          )}
           {canManageColumns && (
             <div className="pi-add-col-wrap">
               <button
@@ -640,25 +662,27 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
           )}
 
           <div className="pi-menu-wrap">
-            <button
-              type="button"
-              className="pi-icon-btn"
-              title="More actions"
-              aria-label="More actions"
-              aria-expanded={moreOpen || removeColOpen}
-              onClick={() => {
-                setAddColOpen(false);
-                setRemoveColOpen(false);
-                setMoreOpen((v) => !v);
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="1" />
-                <circle cx="19" cy="12" r="1" />
-                <circle cx="5" cy="12" r="1" />
-              </svg>
-            </button>
-            {moreOpen && (
+            {showOverflowMenu && (
+              <button
+                type="button"
+                className="pi-icon-btn"
+                title="More actions"
+                aria-label="More actions"
+                aria-expanded={moreOpen || removeColOpen}
+                onClick={() => {
+                  setAddColOpen(false);
+                  setRemoveColOpen(false);
+                  setMoreOpen((v) => !v);
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="19" cy="12" r="1" />
+                  <circle cx="5" cy="12" r="1" />
+                </svg>
+              </button>
+            )}
+            {showOverflowMenu && moreOpen && (
               <div className="pi-popover pi-popover-menu">
                 {mode === "list" && canCreate && (
                   <button
@@ -696,23 +720,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                     )}
                   </button>
                 )}
-                {mode === "detail" && canManage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewIssue(true);
-                      setMoreOpen(false);
-                    }}
-                  >
-                    + New Issue
-                  </button>
-                )}
-                {mode === "detail" && (
-                  <button type="button" onClick={backToList}>
-                    ← All Projects
-                  </button>
-                )}
-                {mode === "detail" && project && leaderProjectIds.includes(project.id) && (
+                {canDeleteProject && project && (
                   <button
                     type="button"
                     className="danger"
