@@ -286,6 +286,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             activeCycle={activeCycle}
             roster={cycleRoster}
             metrics={metrics}
+            projects={visibleProjects}
             personnel={personnelMembers}
             profileName={profileName}
             onSelectCycle={setActiveCycleId}
@@ -377,6 +378,7 @@ function OverviewPanel({
   activeCycle,
   roster,
   metrics,
+  projects,
   personnel,
   profileName,
   onSelectCycle,
@@ -389,6 +391,7 @@ function OverviewPanel({
   activeCycle: SecurityCycle | null;
   roster: SecurityRosterEntry[];
   metrics: ReturnType<typeof cycleMetrics>;
+  projects: { id: string; name: string; lenovo_name?: string }[];
   personnel: Profile[];
   profileName: (id: string | null) => string | null;
   onSelectCycle: (id: string) => void;
@@ -399,6 +402,16 @@ function OverviewPanel({
     patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
   ) => void;
 }) {
+  const projectById = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; lenovo_name?: string }>();
+    for (const p of projects) map.set(p.id, p);
+    // Also index by Compal name for seed/legacy roster rows whose project_id is not a UUID.
+    for (const p of projects) {
+      if (p.name && !map.has(p.name)) map.set(p.name, p);
+    }
+    return map;
+  }, [projects]);
+
   const cycleWaves = normalizeCycleWaves(
     activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" },
   );
@@ -482,7 +495,8 @@ function OverviewPanel({
           <table className="sec-roster-table">
             <thead>
               <tr>
-                <th>Project</th>
+                <th>Compal Project name</th>
+                <th>LENOVO PROJECT NAME</th>
                 <th>
                   Wave <span className="sec-th-affordance" aria-hidden="true">+</span>
                 </th>
@@ -496,7 +510,7 @@ function OverviewPanel({
             <tbody>
               {roster.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="sec-roster-empty">
+                  <td colSpan={6} className="sec-roster-empty">
                     0 entries
                   </td>
                 </tr>
@@ -506,9 +520,13 @@ function OverviewPanel({
                     row.wave !== "Not set" && !waveSelectOptions.includes(row.wave)
                       ? [...waveSelectOptions, row.wave]
                       : waveSelectOptions;
+                  const linked =
+                    projectById.get(row.project_id) ?? projectById.get(row.project_name);
+                  const lenovoName = (linked?.lenovo_name ?? "").trim() || "—";
                   return (
                   <tr key={row.id}>
                     <td className="sec-proj-name">{row.project_name}</td>
+                    <td className="sec-lenovo-name">{lenovoName}</td>
                     <td>
                       <label className="sec-wave-cell">
                         <span
@@ -516,6 +534,7 @@ function OverviewPanel({
                           aria-hidden="true"
                         />
                         <select
+                          className="sec-roster-select"
                           value={options.includes(row.wave) ? row.wave : "Not set"}
                           onChange={(e) => onPatchRoster(row.id, { wave: e.target.value })}
                           aria-label={`Wave for ${row.project_name}`}
@@ -559,6 +578,7 @@ function OverviewPanel({
                           aria-hidden="true"
                         />
                         <select
+                          className="sec-roster-select"
                           value={row.status}
                           onChange={(e) =>
                             onPatchRoster(row.id, { status: e.target.value as SecurityRosterStatus })
@@ -627,6 +647,7 @@ function PersonCell({
         {name ? initials(name) : "—"}
       </span>
       <select
+        className="sec-roster-select"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
         aria-label={ariaLabel}
