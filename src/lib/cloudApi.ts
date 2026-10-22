@@ -15,8 +15,14 @@ import type {
   SecurityIssueInput,
   SecurityRosterEntry,
   SecurityRosterStatus,
+  SecurityWave,
 } from "./securityTypes";
-import { SECURITY_STATUSES } from "./securityTypes";
+import {
+  SECURITY_STATUSES,
+  legacyDatesFromWaves,
+  normalizeCycleWaves,
+  wavesFromLegacyDates,
+} from "./securityTypes";
 import type {
   AccountInput,
   CredentialRow,
@@ -53,15 +59,43 @@ function normalizeSecurityStatus(raw: string | undefined): SecurityRosterStatus 
   return "Not Started";
 }
 
+function parseWavesJson(raw: unknown): SecurityWave[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, i) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const name = String(o.name ?? "").trim();
+      if (!name) return null;
+      return {
+        id: String(o.id ?? `wave-${i}`),
+        name,
+        target_date: String(o.target_date ?? "").trim(),
+      };
+    })
+    .filter((w): w is SecurityWave => Boolean(w));
+}
+
 function mapSecurityCycle(row: Record<string, unknown>): SecurityCycle {
+  const wave1_date = String(row.wave1_date ?? "");
+  const wave2_date = String(row.wave2_date ?? "");
+  const external_release_date = String(row.external_release_date ?? "");
+  const waves = normalizeCycleWaves({
+    waves: parseWavesJson(row.waves),
+    wave1_date,
+    wave2_date,
+    external_release_date,
+  });
+  const legacy = legacyDatesFromWaves(waves);
   return {
     id: String(row.id),
     name: String(row.name ?? ""),
     cycle_type: String(row.cycle_type ?? "Quarter"),
     quarter: String(row.quarter ?? ""),
-    wave1_date: String(row.wave1_date ?? ""),
-    wave2_date: String(row.wave2_date ?? ""),
-    external_release_date: String(row.external_release_date ?? ""),
+    wave1_date: waves.length ? legacy.wave1_date : wave1_date,
+    wave2_date: waves.length ? legacy.wave2_date : wave2_date,
+    external_release_date: waves.length ? legacy.external_release_date : external_release_date,
+    waves,
     project_ids: asJsonStringArray(row.project_ids),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? row.created_at ?? ""),
@@ -1270,22 +1304,32 @@ export const cloudApi = {
     const me = await cloudApi.currentUser();
     const now = new Date().toISOString();
     const projectIds = input.projects.map((p) => p.id);
-    const { data, error } = await sb()
-      .from("security_cycles")
-      .insert({
-        name: input.name.trim(),
-        cycle_type: input.cycle_type.trim() || "Quarter",
-        quarter: input.quarter.trim(),
-        wave1_date: input.wave1_date.trim(),
-        wave2_date: input.wave2_date.trim(),
-        external_release_date: input.external_release_date.trim(),
-        project_ids: projectIds,
-        created_by: me?.id ?? null,
-        created_at: now,
-        updated_at: now,
-      })
-      .select()
-      .single();
+    const waves =
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date);
+    const legacy = legacyDatesFromWaves(waves);
+    const baseRow: Record<string, unknown> = {
+      name: input.name.trim(),
+      cycle_type: input.cycle_type.trim() || "Quarter",
+      quarter: input.quarter.trim(),
+      wave1_date: legacy.wave1_date,
+      wave2_date: legacy.wave2_date,
+      external_release_date: legacy.external_release_date,
+      project_ids: projectIds,
+      created_by: me?.id ?? null,
+      created_at: now,
+      updated_at: now,
+      waves,
+    };
+    let { data, error } = await sb().from("security_cycles").insert(baseRow).select().single();
+    // Pre-migration: waves column missing from Data API cache / schema.
+    if (error && /waves/i.test(String(error.message ?? ""))) {
+      delete baseRow.waves;
+      const retry = await sb().from("security_cycles").insert(baseRow).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
     if (error) throw error;
     const cycle = mapSecurityCycle(data as Record<string, unknown>);
     if (input.projects.length > 0) {
@@ -1303,6 +1347,54 @@ export const cloudApi = {
       if (rosterError) throw rosterError;
     }
     return cycle;
+  },
+
+  async updateSecurityCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
+    const legacy = legacyDatesFromWaves(waves);
+    const updates: Record<string, unknown> = {
+      waves,
+      wave1_date: legacy.wave1_date,
+      wave2_date: legacy.wave2_date,
+      external_release_date: legacy.external_release_date,
+      updated_at: new Date().toISOString(),
+    };
+    let { data, error } = await sb()
+      .from("security_cycles")
+      .update(updates)
+      .eq("id", cycleId)
+      .select()
+      .single();
+    if (error && /waves/i.test(String(error.message ?? ""))) {
+      delete updates.waves;
+      const retry = await sb()
+        .from("security_cycles")
+        .update(updates)
+        .eq("id", cycleId)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) throw error;
+
+    // Remap roster wave labels when names change / removed.
+    const mapped = mapSecurityCycle(data as Record<string, unknown>);
+    const { data: rosterRows, error: rosterReadError } = await sb()
+      .from("security_roster")
+      .select("id, wave")
+      .eq("cycle_id", cycleId);
+    if (rosterReadError) throw rosterReadError;
+    const allowed = new Set(mapped.waves.map((w) => w.name));
+    for (const row of rosterRows ?? []) {
+      const wave = String((row as { wave?: string }).wave ?? "Not set");
+      if (wave === "Not set" || allowed.has(wave)) continue;
+      const { error: fixError } = await sb()
+        .from("security_roster")
+        .update({ wave: "Not set", updated_at: new Date().toISOString() })
+        .eq("id", (row as { id: string }).id);
+      if (fixError) throw fixError;
+    }
+    return mapped;
   },
 
   async updateSecurityRosterEntry(

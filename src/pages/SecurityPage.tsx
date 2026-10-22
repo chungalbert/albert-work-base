@@ -13,10 +13,17 @@ import type {
   SecurityRosterEntry,
   SecurityRosterStatus,
   SecuritySnapshot,
+  SecurityWave,
 } from "../lib/securityTypes";
-import { SECURITY_STATUSES, WAVE_OPTIONS } from "../lib/securityTypes";
+import {
+  SECURITY_STATUSES,
+  newWaveId,
+  normalizeCycleWaves,
+  rosterWaveOptions,
+} from "../lib/securityTypes";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
+import type { Profile } from "../lib/types";
 
 type Tab = "overview" | "issues";
 
@@ -42,6 +49,13 @@ function defaultQuarterLabel(): string {
 export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const { projects, profiles, initialLoading } = useStore();
   const { saveStatus, runSave } = useSaveStatus();
+
+  /** All Personnel members for Owner / Reviewer selects (sorted). */
+  const personnelMembers = useMemo(() => {
+    return [...profiles].sort((a, b) =>
+      a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }),
+    );
+  }, [profiles]);
 
   const [tab, setTab] = useState<Tab>("overview");
   const [snap, setSnap] = useState<SecuritySnapshot | null>(null);
@@ -260,11 +274,30 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             activeCycle={activeCycle}
             roster={cycleRoster}
             metrics={metrics}
-            profiles={profiles}
+            personnel={personnelMembers}
             profileName={profileName}
             onSelectCycle={setActiveCycleId}
             onNewCycle={() => setNewCycleOpen(true)}
             onPatchRoster={patchRoster}
+            onSaveWaves={async (cycleId, waves) => {
+              setError("");
+              try {
+                await runSave(async () => {
+                  const updated = await securityStore.updateCycleWaves(cycleId, waves);
+                  setSnap((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          cycles: prev.cycles.map((c) => (c.id === updated.id ? updated : c)),
+                        }
+                      : prev,
+                  );
+                });
+                await refresh();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+              }
+            }}
           />
         ) : (
           <IssueSummaryPanel
@@ -338,18 +371,19 @@ function OverviewPanel({
   activeCycle,
   roster,
   metrics,
-  profiles,
+  personnel,
   profileName,
   onSelectCycle,
   onNewCycle,
   onPatchRoster,
+  onSaveWaves,
 }: {
   cycles: SecurityCycle[];
   allCycles: SecurityCycle[];
   activeCycle: SecurityCycle | null;
   roster: SecurityRosterEntry[];
   metrics: ReturnType<typeof cycleMetrics>;
-  profiles: { id: string; display_name: string }[];
+  personnel: Profile[];
   profileName: (id: string | null) => string | null;
   onSelectCycle: (id: string) => void;
   onNewCycle: () => void;
@@ -357,29 +391,60 @@ function OverviewPanel({
     id: string,
     patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
   ) => void;
+  onSaveWaves: (cycleId: string, waves: SecurityWave[]) => Promise<void>;
 }) {
-  const timeline = activeCycle
-    ? [
-        activeCycle.wave1_date ? `Wave 1 ${securityDisplayDate(activeCycle.wave1_date)}` : null,
-        activeCycle.wave2_date ? `Wave 2 ${securityDisplayDate(activeCycle.wave2_date)}` : null,
-        activeCycle.external_release_date
-          ? `External Release ${securityDisplayDate(activeCycle.external_release_date)}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
+  const [editingWaves, setEditingWaves] = useState(false);
+  const [draftWaves, setDraftWaves] = useState<SecurityWave[]>([]);
+  const [waveBusy, setWaveBusy] = useState(false);
+
+  useEffect(() => {
+    setEditingWaves(false);
+    setDraftWaves(normalizeCycleWaves(activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" }));
+  }, [activeCycle?.id]);
+
+  const cycleWaves = normalizeCycleWaves(
+    activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" },
+  );
+  const waveSelectOptions = rosterWaveOptions(activeCycle);
+
+  const timeline = cycleWaves
+    .map((w) => {
+      const d = securityDisplayDate(w.target_date);
+      return d ? `${w.name} ${d}` : w.name;
+    })
+    .join(" · ");
 
   const otherFooter = allCycles
     .filter((c) => c.id !== activeCycle?.id)
-    .map((c) => {
-      const n = allCycles
-        ? // count from cycles list via project_ids length
-          c.project_ids.length
-        : 0;
-      return `${c.quarter} · ${n} projects`;
-    })
+    .map((c) => `${c.quarter} · ${c.project_ids.length} projects`)
     .join(" · ");
+
+  const startEditWaves = () => {
+    if (!activeCycle) return;
+    setDraftWaves(
+      normalizeCycleWaves(activeCycle).map((w) => ({ ...w })) || [
+        { id: newWaveId(), name: "Wave 1", target_date: "" },
+      ],
+    );
+    if (normalizeCycleWaves(activeCycle).length === 0) {
+      setDraftWaves([
+        { id: newWaveId(), name: "Wave 1", target_date: "" },
+        { id: newWaveId(), name: "Wave 2", target_date: "" },
+      ]);
+    }
+    setEditingWaves(true);
+  };
+
+  const saveWaves = async () => {
+    if (!activeCycle) return;
+    setWaveBusy(true);
+    try {
+      await onSaveWaves(activeCycle.id, draftWaves);
+      setEditingWaves(false);
+    } finally {
+      setWaveBusy(false);
+    }
+  };
 
   return (
     <>
@@ -390,7 +455,91 @@ function OverviewPanel({
           <p className="sec-cycle-sub">
             {metrics.total} projects across {metrics.waves} waves
           </p>
-          {timeline ? <p className="sec-cycle-timeline">{timeline}</p> : null}
+          {!editingWaves ? (
+            <div className="sec-cycle-timeline-row">
+              {timeline ? <p className="sec-cycle-timeline">{timeline}</p> : (
+                <p className="sec-cycle-timeline is-empty">No waves yet</p>
+              )}
+              <button
+                type="button"
+                className="sec-edit-waves-btn"
+                onClick={startEditWaves}
+                disabled={!activeCycle}
+              >
+                Edit waves
+              </button>
+            </div>
+          ) : (
+            <div className="sec-wave-editor" aria-label="Edit cycle waves">
+              {draftWaves.map((w, i) => (
+                <div key={w.id} className="sec-wave-editor-row">
+                  <input
+                    className="sec-wave-name"
+                    value={w.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setDraftWaves((prev) => prev.map((x, j) => (j === i ? { ...x, name } : x)));
+                    }}
+                    aria-label={`Wave ${i + 1} name`}
+                    placeholder="Wave name"
+                  />
+                  <input
+                    type="date"
+                    className="sec-wave-date"
+                    value={w.target_date}
+                    onChange={(e) => {
+                      const target_date = e.target.value;
+                      setDraftWaves((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, target_date } : x)),
+                      );
+                    }}
+                    aria-label={`${w.name || `Wave ${i + 1}`} date`}
+                  />
+                  <button
+                    type="button"
+                    className="sec-wave-remove"
+                    onClick={() => setDraftWaves((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={draftWaves.length <= 1}
+                    aria-label={`Remove ${w.name || `wave ${i + 1}`}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <div className="sec-wave-editor-actions">
+                <button
+                  type="button"
+                  className="sec-btn-ghost"
+                  onClick={() =>
+                    setDraftWaves((prev) => [
+                      ...prev,
+                      { id: newWaveId(), name: `Wave ${prev.length + 1}`, target_date: "" },
+                    ])
+                  }
+                >
+                  + Add wave
+                </button>
+                <div className="sec-wave-editor-right">
+                  <button
+                    type="button"
+                    className="sec-btn-ghost"
+                    onClick={() => setEditingWaves(false)}
+                    disabled={waveBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="sec-btn-primary"
+                    onClick={() => void saveWaves()}
+                    disabled={waveBusy || draftWaves.every((w) => !w.name.trim())}
+                  >
+                    {waveBusy ? "Saving…" : "Save waves"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="sec-cycle-metrics" aria-label="Cycle metrics">
           <Metric label="Internal release" value={metrics.internal} total={metrics.total} tone="warn" />
@@ -452,7 +601,12 @@ function OverviewPanel({
                   </td>
                 </tr>
               ) : (
-                roster.map((row) => (
+                roster.map((row) => {
+                  const options =
+                    row.wave !== "Not set" && !waveSelectOptions.includes(row.wave)
+                      ? [...waveSelectOptions, row.wave]
+                      : waveSelectOptions;
+                  return (
                   <tr key={row.id}>
                     <td className="sec-proj-name">{row.project_name}</td>
                     <td>
@@ -462,11 +616,11 @@ function OverviewPanel({
                           aria-hidden="true"
                         />
                         <select
-                          value={WAVE_OPTIONS.includes(row.wave as (typeof WAVE_OPTIONS)[number]) ? row.wave : "Not set"}
+                          value={options.includes(row.wave) ? row.wave : "Not set"}
                           onChange={(e) => onPatchRoster(row.id, { wave: e.target.value })}
                           aria-label={`Wave for ${row.project_name}`}
                         >
-                          {WAVE_OPTIONS.map((w) => (
+                          {options.map((w) => (
                             <option key={w} value={w}>
                               {w}
                             </option>
@@ -477,7 +631,7 @@ function OverviewPanel({
                     <td>
                       <PersonCell
                         name={profileName(row.owner_id)}
-                        profiles={profiles}
+                        personnel={personnel}
                         value={row.owner_id}
                         onChange={(owner_id) => onPatchRoster(row.id, { owner_id })}
                         ariaLabel={`Owner for ${row.project_name}`}
@@ -486,7 +640,7 @@ function OverviewPanel({
                     <td>
                       <PersonCell
                         name={profileName(row.reviewer_id)}
-                        profiles={profiles}
+                        personnel={personnel}
                         value={row.reviewer_id}
                         onChange={(reviewer_id) => onPatchRoster(row.id, { reviewer_id })}
                         ariaLabel={`Reviewer for ${row.project_name}`}
@@ -520,7 +674,8 @@ function OverviewPanel({
                       </label>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -555,13 +710,13 @@ function Metric({
 
 function PersonCell({
   name,
-  profiles,
+  personnel,
   value,
   onChange,
   ariaLabel,
 }: {
   name: string | null;
-  profiles: { id: string; display_name: string }[];
+  personnel: Profile[];
   value: string | null;
   onChange: (id: string | null) => void;
   ariaLabel: string;
@@ -577,9 +732,10 @@ function PersonCell({
         aria-label={ariaLabel}
       >
         <option value="">—</option>
-        {profiles.map((p) => (
+        {personnel.map((p) => (
           <option key={p.id} value={p.id}>
             {p.display_name}
+            {p.username ? ` (${p.username})` : ""}
           </option>
         ))}
       </select>
