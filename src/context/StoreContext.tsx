@@ -4,6 +4,15 @@ import { ALL_PROJECTS_ID, isAllProjects } from "../lib/projects";
 import type { Profile, Project, ProjectMember, Role, Task } from "../lib/types";
 import { useAuth } from "./AuthContext";
 
+export type ReloadOptions = {
+  /**
+   * When true, an empty projects payload may replace a non-empty list
+   * (e.g. after deleting the last project). Default false so a transient
+   * Neon/RLS empty response after Save does not wipe the UI.
+   */
+  allowEmpty?: boolean;
+};
+
 interface StoreValue {
   projects: Project[];
   profiles: Profile[];
@@ -22,13 +31,16 @@ interface StoreValue {
   setProjectId: (id: string) => void;
   projectName: (id: string) => string;
   canLeadProject: (id: string) => boolean;
-  reload: () => Promise<void>;
+  /** Optimistic in-place project updates (e.g. Admin edit Save) without clearing the list. */
+  patchProjectsLocal: (updater: (prev: Project[]) => Project[]) => void;
+  reload: (options?: ReloadOptions) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [allMembers, setAllMembers] = useState<ProjectMember[]>([]);
@@ -38,15 +50,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const hasLoadedOnce = useRef(false);
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const reloadGen = useRef(0);
 
-  const reload = useCallback(async () => {
-    if (!user) {
+  const patchProjectsLocal = useCallback((updater: (prev: Project[]) => Project[]) => {
+    setProjects((prev) => updater(prev));
+  }, []);
+
+  const reload = useCallback(async (options?: ReloadOptions) => {
+    if (!userId) {
       setInitialLoading(false);
       return;
     }
+    // Post-boot reloads (Save/Cancel/edit) must not flip PageLoadingGate / cold-start empty.
     if (!hasLoadedOnce.current) setInitialLoading(true);
+    const gen = ++reloadGen.current;
     try {
       const [nextProjects, nextProfiles, nextAllTasks, nextLeaderIds, nextAllMembers] = await Promise.all([
         api.listProjects(),
@@ -55,8 +76,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         api.listLeaderProjectIds(),
         api.listAllMembers(),
       ]);
-      const visible = new Set(nextProjects.map((project) => project.id));
-      setProjects(nextProjects);
+      if (gen !== reloadGen.current) return;
+
+      const prev = projectsRef.current;
+      const retainPrior =
+        nextProjects.length === 0 &&
+        prev.length > 0 &&
+        hasLoadedOnce.current &&
+        !options?.allowEmpty;
+      const resolvedProjects = retainPrior ? prev : nextProjects;
+
+      const visible = new Set(resolvedProjects.map((project) => project.id));
+      setProjects(resolvedProjects);
       setProfiles(nextProfiles);
       setAllTasks(nextAllTasks.filter((task) => visible.has(task.project_id)));
       setLeaderProjectIds(nextLeaderIds);
@@ -67,27 +98,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ? ALL_PROJECTS_ID
           : current && visible.has(current)
             ? current
-            : nextProjects[0]?.id ?? null;
+            : resolvedProjects[0]?.id ?? null;
       if (selected !== current) setProjectId(selected);
       setLoadError("");
     } catch (err) {
+      if (gen !== reloadGen.current) return;
+      // Keep existing projects on failure — never blank the list for a reload error.
       setLoadError(err instanceof Error ? err.message : "載入專案失敗");
     } finally {
-      hasLoadedOnce.current = true;
-      setInitialLoading(false);
+      if (gen === reloadGen.current) {
+        hasLoadedOnce.current = true;
+        setInitialLoading(false);
+      }
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     hasLoadedOnce.current = false;
-    if (!user) {
+    reloadGen.current += 1;
+    if (!userId) {
+      setProjects([]);
+      setProfiles([]);
+      setAllMembers([]);
+      setAllTasks([]);
+      setLeaderProjectIds([]);
+      setProjectId(null);
       setInitialLoading(false);
       setLoadError("");
       return;
     }
     setInitialLoading(true);
     void reload();
-  }, [reload, user]);
+  }, [reload, userId]);
 
   const isAll = isAllProjects(projectId);
   const project = isAll ? null : projects.find((item) => item.id === projectId) ?? null;
@@ -143,6 +185,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProjectId,
       projectName,
       canLeadProject,
+      patchProjectsLocal,
       reload,
     }),
     [
@@ -161,6 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadError,
       projectName,
       canLeadProject,
+      patchProjectsLocal,
       reload,
     ],
   );

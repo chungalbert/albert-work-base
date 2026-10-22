@@ -284,7 +284,7 @@ export function TasksPage() {
                     <h2 className="task-title">{task.title}</h2>
                   </div>
                   {canDeleteAny && canDelete && (
-                    <button className="btn task-delete" type="button" onClick={() => void api.deleteTask(task.id).then(reload)}>
+                    <button className="btn task-delete" type="button" onClick={() => void api.deleteTask(task.id).then(() => reload())}>
                       刪除
                     </button>
                   )}
