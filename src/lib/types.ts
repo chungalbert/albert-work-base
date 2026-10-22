@@ -12,6 +12,8 @@ export type ViewId =
   | "people"
   | "tasks"
   | "gantt"
+  | "security"
+  | "inv-pcr"
   | "guides"
   | "notes"
   | "chat"
