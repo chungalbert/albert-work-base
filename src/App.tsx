@@ -11,6 +11,8 @@ import { ChatPage } from "./pages/ChatPage";
 import { ToolPage } from "./pages/ToolPage";
 import { OtpVaultPage } from "./pages/OtpVaultPage";
 import { WheaToolPage } from "./pages/WheaToolPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { InvPcrPage } from "./pages/InvPcrPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -31,6 +33,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "home", label: "Dashboard", icon: "grid" },
       { id: "projects", label: "Projects & Issues", icon: "folder" },
       { id: "gantt", label: "Project schedule", icon: "calendar" },
+      { id: "security", label: "Security", icon: "shield" },
+      { id: "inv-pcr", label: "INV&PCR", icon: "clipboard" },
     ],
   },
   {
@@ -86,6 +90,20 @@ function NavIcon({ name }: { name: string }) {
         <svg {...common}>
           <rect x="3" y="5" width="18" height="16" rx="2" />
           <path d="M16 3v4M8 3v4M3 11h18" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
+    case "clipboard":
+      return (
+        <svg {...common}>
+          <rect x="8" y="2" width="8" height="4" rx="1" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          <path d="M9 12h6M9 16h6" />
         </svg>
       );
     case "book":
@@ -277,7 +295,11 @@ function Shell() {
         <main
           className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}`}
         >
-          {!hideChrome && currentView !== "guides" && currentView !== "tool" && <ReminderBanner />}
+          {!hideChrome &&
+            currentView !== "guides" &&
+            currentView !== "tool" &&
+            currentView !== "security" &&
+            currentView !== "inv-pcr" && <ReminderBanner />}
           {currentView === "home" && <DashboardPage />}
           {currentView === "projects" && (
             <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
@@ -290,6 +312,8 @@ function Shell() {
               <GanttPage />
             </Suspense>
           )}
+          {currentView === "security" && <SecurityPage />}
+          {currentView === "inv-pcr" && <InvPcrPage />}
           {currentView === "guides" && <GuidesPage />}
           {currentView === "notes" && (
             <NotesPage onGoDashboard={() => setView("home")} />

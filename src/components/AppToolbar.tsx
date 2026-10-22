@@ -4,6 +4,8 @@ import type { ViewId } from "../lib/types";
 const VIEW_CRUMB: Partial<Record<ViewId, string>> = {
   home: "Dashboard",
   gantt: "Project schedule",
+  security: "Security",
+  "inv-pcr": "INV&PCR",
   guides: "教學",
   notes: "Note",
   chat: "Chat",
