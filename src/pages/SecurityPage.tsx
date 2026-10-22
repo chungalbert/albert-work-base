@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useStore } from "../context/StoreContext";
@@ -797,43 +797,53 @@ function CycleFormModal({
 }) {
   const isEdit = mode === "edit";
   const quarterDefault = defaultQuarterLabel();
-  const initialWaves = isEdit && cycle
-    ? (() => {
-        const w = normalizeCycleWaves(cycle);
-        return w.length > 0
-          ? w.map((x) => ({ ...x }))
-          : [
-              { id: newWaveId(), name: "Wave 1", target_date: "" },
-              { id: newWaveId(), name: "Wave 2", target_date: "" },
-            ];
-      })()
-    : [
-        { id: newWaveId(), name: "Wave 1", target_date: "" },
-        { id: newWaveId(), name: "Wave 2", target_date: "" },
-        { id: newWaveId(), name: "External Release", target_date: "" },
-      ];
 
   const [name, setName] = useState(isEdit && cycle ? cycle.name : `${quarterDefault} AIO`);
   const [cycleType, setCycleType] = useState(isEdit && cycle ? cycle.cycle_type : "Quarter");
   const [quarter, setQuarter] = useState(isEdit && cycle ? cycle.quarter : quarterDefault);
-  const [waves, setWaves] = useState<SecurityWave[]>(initialWaves);
+  const [waves, setWaves] = useState<SecurityWave[]>(() => {
+    if (isEdit && cycle) {
+      const w = normalizeCycleWaves(cycle);
+      if (w.length > 0) return w.map((x) => ({ ...x, id: x.id || newWaveId() }));
+      return [
+        { id: newWaveId(), name: "Wave 1", target_date: "" },
+        { id: newWaveId(), name: "Wave 2", target_date: "" },
+      ];
+    }
+    return [
+      { id: newWaveId(), name: "Wave 1", target_date: "" },
+      { id: newWaveId(), name: "Wave 2", target_date: "" },
+      { id: newWaveId(), name: "External Release", target_date: "" },
+    ];
+  });
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (isEdit) return new Set(roster.map((r) => r.project_id));
     return new Set();
   });
+  /** Freeze project id order when the modal opens so checking boxes never reorders the list. */
+  const [projectOrder] = useState(() => projects.map((p) => p.id));
   const [projQuery, setProjQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
 
   const filtered = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    const ordered: { id: string; name: string; blurb: string }[] = [];
+    for (const id of projectOrder) {
+      const p = byId.get(id);
+      if (p) ordered.push(p);
+    }
+    for (const p of projects) {
+      if (!projectOrder.includes(p.id)) ordered.push(p);
+    }
     const q = projQuery.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter(
+    if (!q) return ordered;
+    return ordered.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.blurb.toLowerCase().includes(q),
     );
-  }, [projects, projQuery]);
+  }, [projects, projectOrder, projQuery]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -842,6 +852,25 @@ function CycleFormModal({
       else next.add(id);
       return next;
     });
+  };
+
+  const updateWave = (id: string, patch: Partial<Pick<SecurityWave, "name" | "target_date">>) => {
+    setWaves((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  };
+
+  const addWave = (e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setWaves((prev) => [
+      ...prev,
+      { id: newWaveId(), name: `Wave ${prev.length + 1}`, target_date: "" },
+    ]);
+  };
+
+  const removeWave = (e: ReactMouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setWaves((prev) => (prev.length <= 1 ? prev : prev.filter((w) => w.id !== id)));
   };
 
   const submit = async (e: FormEvent) => {
@@ -876,7 +905,10 @@ function CycleFormModal({
         wave2_date: cleanedWaves[1]?.target_date ?? "",
         external_release_date: cleanedWaves[2]?.target_date ?? "",
         waves: cleanedWaves,
-        projects: projects.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, name: p.name })),
+        projects: projectOrder
+          .map((id) => projects.find((p) => p.id === id))
+          .filter((p): p is { id: string; name: string; blurb: string } => Boolean(p) && selected.has(p!.id))
+          .map((p) => ({ id: p.id, name: p.name })),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
@@ -924,56 +956,42 @@ function CycleFormModal({
         <div className="sec-waves-fields">
           <div className="sec-waves-fields-head">
             <span>Waves *</span>
-            <button
-              type="button"
-              className="sec-add-wave-link"
-              onClick={() =>
-                setWaves((prev) => [
-                  ...prev,
-                  { id: newWaveId(), name: `Wave ${prev.length + 1}`, target_date: "" },
-                ])
-              }
-            >
+            <button type="button" className="sec-add-wave-link" onClick={addWave}>
               + Add wave
             </button>
           </div>
           <div className="sec-waves-grid">
             {waves.map((w, i) => (
               <div key={w.id} className="sec-wave-field">
-                <label className="sec-field">
-                  <span className="sec-wave-field-label">
-                    <input
-                      className="sec-wave-name-input"
-                      value={w.name}
-                      onChange={(e) => {
-                        const nameVal = e.target.value;
-                        setWaves((prev) => prev.map((x, j) => (j === i ? { ...x, name: nameVal } : x)));
-                      }}
-                      aria-label={`Wave ${i + 1} name`}
-                      placeholder="Wave name"
-                    />
-                    <button
-                      type="button"
-                      className="sec-wave-remove"
-                      onClick={() => setWaves((prev) => prev.filter((_, j) => j !== i))}
-                      disabled={waves.length <= 1}
-                      aria-label={`Remove ${w.name || `wave ${i + 1}`}`}
-                    >
-                      ×
-                    </button>
-                  </span>
+                <div className="sec-wave-field-label">
                   <input
-                    type="date"
-                    value={w.target_date}
-                    onChange={(e) => {
-                      const target_date = e.target.value;
-                      setWaves((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, target_date } : x)),
-                      );
-                    }}
-                    aria-label={`${w.name || `Wave ${i + 1}`} target date`}
+                    type="text"
+                    className="sec-wave-name-input"
+                    value={w.name}
+                    onChange={(e) => updateWave(w.id, { name: e.target.value })}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Wave ${i + 1} name`}
+                    placeholder="Wave name"
+                    autoComplete="off"
                   />
-                </label>
+                  <button
+                    type="button"
+                    className="sec-wave-remove"
+                    onClick={(e) => removeWave(e, w.id)}
+                    disabled={waves.length <= 1}
+                    aria-label={`Remove ${w.name || `wave ${i + 1}`}`}
+                  >
+                    ×
+                  </button>
+                </div>
+                <input
+                  type="date"
+                  className="sec-wave-date-input"
+                  value={w.target_date}
+                  onChange={(e) => updateWave(w.id, { target_date: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`${w.name || `Wave ${i + 1}`} target date`}
+                />
               </div>
             ))}
           </div>
