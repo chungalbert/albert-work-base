@@ -15,6 +15,7 @@ import type {
   NoteColor,
   NoteItem,
   OtpVaultEntry,
+  PersonnelRole,
   Profile,
   Project,
   ProjectColumn,
@@ -779,10 +780,16 @@ export const cloudApi = {
     return data.credentials as CredentialRow[];
   },
 
-  /** After Add Member: persist Personnel fields and promote Neon Auth admin when needed. */
+  /** After Add Member / Personnel edit: persist profile fields and promote Neon Auth admin when needed. */
   async syncPersonnelProfile(
     userId: string,
-    patch: { username?: string; display_name?: string; unit?: string; is_admin?: boolean },
+    patch: {
+      username?: string;
+      display_name?: string;
+      unit?: string;
+      is_admin?: boolean;
+      personnel_role?: PersonnelRole;
+    },
   ) {
     if (!hasNeonConfig()) return;
     const updates: Record<string, string | boolean> = {};
@@ -790,9 +797,25 @@ export const cloudApi = {
     if (patch.display_name !== undefined) updates.display_name = patch.display_name;
     if (patch.unit !== undefined) updates.unit = patch.unit;
     if (patch.is_admin !== undefined) updates.is_admin = patch.is_admin;
+    if (patch.personnel_role !== undefined) updates.personnel_role = patch.personnel_role;
     if (Object.keys(updates).length > 0) {
       const { error } = await sb().from("profiles").update(updates).eq("id", userId);
-      if (error) throw error;
+      if (error) {
+        // Pre-migration / stale Data API cache: profiles.personnel_role missing.
+        // Retry without it so is_admin / phone still sync; Role remains overlay-only
+        // until neon/personnel-role.sql is applied and the schema cache is refreshed.
+        const msg = `${error.message ?? ""} ${error.code ?? ""} ${error.details ?? ""}`;
+        const missingRoleCol =
+          patch.personnel_role !== undefined &&
+          /personnel_role/i.test(msg) &&
+          (/column|schema cache|Could not find|PGRST204/i.test(msg) || error.code === "PGRST204");
+        if (!missingRoleCol) throw error;
+        const { personnel_role: _drop, ...rest } = updates;
+        if (Object.keys(rest).length === 0) return;
+        const retry = await sb().from("profiles").update(rest).eq("id", userId);
+        if (retry.error) throw retry.error;
+        return;
+      }
     }
     if (patch.is_admin) {
       try {

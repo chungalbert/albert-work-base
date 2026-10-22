@@ -86,7 +86,9 @@ export const personnelUiStore = {
       display_name: overlay.display_name ?? profile.display_name,
       unit: overlay.unit ?? profile.unit,
       email: overlay.email ?? profile.email,
-      personnel_role: overlay.personnel_role ?? profile.personnel_role,
+      // Neon profiles.personnel_role is source of truth when present; overlay fills gaps
+      // (pre-migration localStorage, or local-only mode).
+      personnel_role: profile.personnel_role ?? overlay.personnel_role,
       custom,
     };
     next.personnel_role = normalizePersonnelRole(next);
