@@ -2625,6 +2625,18 @@ select.pi-state {
   min-height: 30px;
 }
 
+/* Centered store-boot gate — same pill as Saving / 載入中… */
+.page-loading-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  min-height: 240px;
+  padding: 48px 16px;
+  box-sizing: border-box;
+}
+
 .save-status,
 .personnel-save-status {
   display: inline-flex;
