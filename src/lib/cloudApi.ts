@@ -8,6 +8,7 @@ import {
   seedStandardProjectColumns,
   type ProjectFieldPatch,
 } from "./projectsUiStore";
+import type { CycleDetailDoc, CycleDetailItem, ItemApplyStatus } from "./cycleDetailTypes";
 import type {
   NewCycleInput,
   SecurityCycle,
@@ -128,6 +129,46 @@ function mapSecurityIssue(row: Record<string, unknown>): SecurityIssue {
     project_names: String(row.project_names ?? ""),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? row.created_at ?? ""),
+  };
+}
+
+function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
+  const s = String(raw ?? "");
+  if (s === "Applied" || s === "Not Applied") return s;
+  return "";
+}
+
+function mapSecurityCycleDetail(row: Record<string, unknown>): CycleDetailDoc {
+  const cycleId = String(row.cycle_id ?? "");
+  const itemsRaw = Array.isArray(row.items) ? row.items : [];
+  const items: CycleDetailItem[] = itemsRaw.map((item, i) => {
+    const o = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    const appliesRaw =
+      o.applies && typeof o.applies === "object" ? (o.applies as Record<string, unknown>) : {};
+    const applies: Record<string, ItemApplyStatus> = {};
+    for (const [pid, v] of Object.entries(appliesRaw)) {
+      applies[pid] = normalizeApplyStatus(v);
+    }
+    return {
+      id: String(o.id ?? `cdi-${i}`),
+      title: String(o.title ?? ""),
+      detail: String(o.detail ?? ""),
+      cycle_comment: String(o.cycle_comment ?? ""),
+      applies,
+      sort_order: Number(o.sort_order) || i,
+    };
+  });
+  const releaseRaw =
+    row.release && typeof row.release === "object" ? (row.release as Record<string, unknown>) : {};
+  const by_project =
+    releaseRaw.by_project && typeof releaseRaw.by_project === "object"
+      ? (releaseRaw.by_project as CycleDetailDoc["release"]["by_project"])
+      : {};
+  return {
+    cycle_id: cycleId,
+    items,
+    release: { by_project },
+    updated_at: String(row.updated_at ?? new Date().toISOString()),
   };
 }
 
@@ -1529,5 +1570,34 @@ export const cloudApi = {
       .single();
     if (error) throw error;
     return mapSecurityIssue(data as Record<string, unknown>);
+  },
+
+  /** null when no row yet (first open). */
+  async getSecurityCycleDetail(cycleId: string): Promise<CycleDetailDoc | null> {
+    const { data, error } = await sb()
+      .from("security_cycle_details")
+      .select("*")
+      .eq("cycle_id", cycleId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return mapSecurityCycleDetail(data as Record<string, unknown>);
+  },
+
+  async upsertSecurityCycleDetail(doc: CycleDetailDoc): Promise<CycleDetailDoc> {
+    const now = new Date().toISOString();
+    const payload = {
+      cycle_id: doc.cycle_id,
+      items: doc.items,
+      release: doc.release,
+      updated_at: now,
+    };
+    const { data, error } = await sb()
+      .from("security_cycle_details")
+      .upsert(payload, { onConflict: "cycle_id" })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityCycleDetail(data as Record<string, unknown>);
   },
 };

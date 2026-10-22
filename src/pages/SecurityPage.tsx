@@ -1,7 +1,9 @@
 import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { CycleDetailPanel } from "../components/CycleDetailPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useStore } from "../context/StoreContext";
+import type { CycleDetailDoc } from "../lib/cycleDetailTypes";
 import {
   cycleMetrics,
   securityDisplayDate,
@@ -23,7 +25,7 @@ import {
 } from "../lib/securityTypes";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
-import type { Profile } from "../lib/types";
+import type { Profile, Project } from "../lib/types";
 
 type Tab = "overview" | "issues";
 
@@ -71,6 +73,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [issueModal, setIssueModal] = useState<null | { mode: "create" | "edit"; issue?: SecurityIssue }>(
     null,
   );
+  /** When set, show cycle detail matrix (AIOSW security-update?cycle=…). */
+  const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
+  const [detailDoc, setDetailDoc] = useState<CycleDetailDoc | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const visibleProjects = useMemo(
     () => projects.filter((p) => p.name !== PROJECT_COLUMNS_META_NAME),
@@ -119,6 +125,33 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
   const cycles = snap?.cycles ?? [];
   const activeCycle = cycles.find((c) => c.id === activeCycleId) ?? cycles[0] ?? null;
+  const detailCycle = detailCycleId
+    ? (cycles.find((c) => c.id === detailCycleId) ?? null)
+    : null;
+
+  const openCycleDetail = useCallback(
+    async (cycleId: string) => {
+      setDetailCycleId(cycleId);
+      setActiveCycleId(cycleId);
+      setDetailLoading(true);
+      setError("");
+      try {
+        const doc = await securityStore.loadCycleDetail(cycleId);
+        setDetailDoc(doc);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        setDetailDoc(null);
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [],
+  );
+
+  const closeCycleDetail = useCallback(() => {
+    setDetailCycleId(null);
+    setDetailDoc(null);
+  }, []);
 
   const cycleRoster = useMemo(() => {
     if (!snap || !activeCycle) return [] as SecurityRosterEntry[];
@@ -226,7 +259,24 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           <span className="sec-bc-sep" aria-hidden="true">
             /
           </span>
-          {tab === "issues" ? (
+          {detailCycle ? (
+            <>
+              <button
+                type="button"
+                className="sec-bc-link"
+                onClick={() => {
+                  closeCycleDetail();
+                  setTab("overview");
+                }}
+              >
+                BIOS Security Updates
+              </button>
+              <span className="sec-bc-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="sec-bc-current">{detailCycle.name}</span>
+            </>
+          ) : tab === "issues" ? (
             <>
               <button type="button" className="sec-bc-link" onClick={() => setTab("overview")}>
                 BIOS Security Updates
@@ -243,6 +293,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
         <div className="sec-toolbar-actions">
           <SavingIndicator status={saveStatus} />
+          {!detailCycle && (
           <button
             type="button"
             className="sec-toggle-btn"
@@ -250,6 +301,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           >
             {tab === "overview" ? "Issue summary" : "Overview"}
           </button>
+          )}
           <label className="sec-search">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
@@ -279,6 +331,28 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             <LoadingIndicator />
             <span>Loading project roster...</span>
           </div>
+        ) : detailCycle ? (
+          detailLoading ? (
+            <div className="sec-loading" role="status" aria-busy="true">
+              <LoadingIndicator />
+              <span>Loading cycle detail...</span>
+            </div>
+          ) : (
+            <CycleDetailPanel
+              cycle={detailCycle}
+              roster={snap?.roster.filter((r) => r.cycle_id === detailCycle.id) ?? []}
+              projects={visibleProjects as Project[]}
+              issues={snap?.issues ?? []}
+              saved={detailDoc}
+              busy={saveStatus.kind === "saving"}
+              onBack={closeCycleDetail}
+              onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
+              onSave={async (doc) => {
+                const saved = await runSave(() => securityStore.saveCycleDetail(doc));
+                setDetailDoc(saved);
+              }}
+            />
+          )
         ) : tab === "overview" ? (
           <OverviewPanel
             cycles={filteredCycles.length ? filteredCycles : cycles}
@@ -290,6 +364,9 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             personnel={personnelMembers}
             profileName={profileName}
             onSelectCycle={setActiveCycleId}
+            onOpenDetail={() => {
+              if (activeCycle) void openCycleDetail(activeCycle.id);
+            }}
             onNewCycle={() => setCycleModal({ mode: "create" })}
             onEditCycle={() => {
               if (activeCycle) setCycleModal({ mode: "edit", cycle: activeCycle });
@@ -382,6 +459,7 @@ function OverviewPanel({
   personnel,
   profileName,
   onSelectCycle,
+  onOpenDetail,
   onNewCycle,
   onEditCycle,
   onPatchRoster,
@@ -395,6 +473,7 @@ function OverviewPanel({
   personnel: Profile[];
   profileName: (id: string | null) => string | null;
   onSelectCycle: (id: string) => void;
+  onOpenDetail: () => void;
   onNewCycle: () => void;
   onEditCycle: () => void;
   onPatchRoster: (
@@ -434,7 +513,18 @@ function OverviewPanel({
       <section className="sec-cycle-card" aria-label="Active cycle">
         <div className="sec-cycle-main">
           <p className="sec-cycle-label">Active cycle</p>
-          <h1 className="sec-cycle-title">{activeCycle?.name || "—"}</h1>
+          {activeCycle ? (
+            <button
+              type="button"
+              className="sec-cycle-title-btn"
+              onClick={onOpenDetail}
+              title="Open cycle detail"
+            >
+              <h1 className="sec-cycle-title">{activeCycle.name}</h1>
+            </button>
+          ) : (
+            <h1 className="sec-cycle-title">—</h1>
+          )}
           <p className="sec-cycle-sub">
             {metrics.total} projects across {metrics.waves} waves
           </p>

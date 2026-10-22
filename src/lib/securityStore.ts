@@ -6,6 +6,15 @@
  */
 import { cloudApi } from "./cloudApi";
 import type {
+  CycleDetailDoc,
+  CycleDetailItem,
+  ItemApplyStatus,
+} from "./cycleDetailTypes";
+import {
+  emptyCycleDetail,
+  newDetailItemId,
+} from "./cycleDetailTypes";
+import type {
   NewCycleInput,
   SecurityCycle,
   SecurityIssue,
@@ -25,6 +34,7 @@ import {
 import { hasSupabaseConfig } from "./util";
 
 const KEY = "awb-security-v1";
+const DETAIL_KEY = "awb-security-detail-v1";
 const CLOUD_PROBE_TTL_MS = 20_000;
 
 let cloudOk: boolean | null = null;
@@ -51,8 +61,97 @@ function isSecurityTableMissing(err: unknown): boolean {
     (msg.includes("does not exist") && msg.includes("security_")) ||
     msg.includes("security_cycles") ||
     msg.includes("security_roster") ||
-    msg.includes("security_issues")
+    msg.includes("security_issues") ||
+    msg.includes("security_cycle_details")
   );
+}
+
+function loadLocalDetails(): Record<string, CycleDetailDoc> {
+  try {
+    const raw = localStorage.getItem(DETAIL_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, CycleDetailDoc>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalDetails(map: Record<string, CycleDetailDoc>) {
+  localStorage.setItem(DETAIL_KEY, JSON.stringify(map));
+}
+
+function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
+  const s = String(raw ?? "");
+  if (s === "Applied" || s === "Not Applied") return s;
+  return "";
+}
+
+function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null | undefined): CycleDetailDoc {
+  const base = emptyCycleDetail(cycleId);
+  if (!raw) return base;
+  const items: CycleDetailItem[] = Array.isArray(raw.items)
+    ? raw.items.map((item, i) => {
+        const appliesRaw =
+          item && typeof item === "object" && item.applies && typeof item.applies === "object"
+            ? (item.applies as Record<string, unknown>)
+            : {};
+        const applies: Record<string, ItemApplyStatus> = {};
+        for (const [pid, v] of Object.entries(appliesRaw)) {
+          applies[pid] = normalizeApplyStatus(v);
+        }
+        return {
+          id: String(item?.id || newDetailItemId()),
+          title: String(item?.title ?? ""),
+          detail: String(item?.detail ?? ""),
+          cycle_comment: String(item?.cycle_comment ?? ""),
+          applies,
+          sort_order: Number(item?.sort_order) || i,
+        };
+      })
+    : [];
+  const by_project =
+    raw.release && typeof raw.release === "object" && raw.release.by_project
+      ? { ...raw.release.by_project }
+      : {};
+  return {
+    cycle_id: cycleId,
+    items,
+    release: { by_project },
+    updated_at: String(raw.updated_at ?? new Date().toISOString()),
+  };
+}
+
+/** Seed matrix rows from issues already linked to this cycle (local / first open). */
+export function seedDetailFromIssues(
+  cycleId: string,
+  issues: SecurityIssue[],
+  projectIds: string[],
+): CycleDetailDoc {
+  const linked = issues
+    .filter((i) => i.cycle_ids.includes(cycleId))
+    .slice()
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const items: CycleDetailItem[] = linked.map((issue, i) => {
+    const applies: Record<string, ItemApplyStatus> = {};
+    for (const pid of projectIds) {
+      applies[pid] = issue.project_ids.includes(pid) ? "Applied" : "";
+    }
+    return {
+      id: newDetailItemId(),
+      title: issue.title,
+      detail: issue.detail || issue.oem_request_id || "",
+      cycle_comment: "",
+      applies,
+      sort_order: i,
+    };
+  });
+  return {
+    cycle_id: cycleId,
+    items,
+    release: { by_project: {} },
+    updated_at: new Date().toISOString(),
+  };
 }
 
 function emptySnapshot(): SecuritySnapshot {
@@ -598,8 +697,47 @@ export const securityStore = {
     return next;
   },
 
+  /**
+   * Load cycle detail matrix. `null` = never saved (caller may seed from issues).
+   * Cloud missing table falls back to local.
+   */
+  async loadCycleDetail(cycleId: string): Promise<CycleDetailDoc | null> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.getSecurityCycleDetail(cycleId);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const map = loadLocalDetails();
+    if (map[cycleId]) return normalizeDetailDoc(cycleId, map[cycleId]);
+    return null;
+  },
+
+  /** Persist full draft (Save All). Upserts cloud row or local map. */
+  async saveCycleDetail(doc: CycleDetailDoc): Promise<CycleDetailDoc> {
+    const normalized = normalizeDetailDoc(doc.cycle_id, {
+      ...doc,
+      updated_at: new Date().toISOString(),
+    });
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.upsertSecurityCycleDetail(normalized);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const map = loadLocalDetails();
+    map[normalized.cycle_id] = normalized;
+    saveLocalDetails(map);
+    return normalized;
+  },
+
   /** Exported for cloudApi row mapping. */
   _asStringArray: asStringArray,
   _normalizeStatus: normalizeStatus,
   _emptySnapshot: emptySnapshot,
+  _normalizeDetailDoc: normalizeDetailDoc,
 };
