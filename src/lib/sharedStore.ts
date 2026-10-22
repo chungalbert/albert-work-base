@@ -120,7 +120,7 @@ export async function getSharedStoreStatus(): Promise<SharedStoreStatus> {
       message:
         pending > 0
           ? `雲端共用已就緒（所有登入成員可見）。此瀏覽器還有 ${counts.otp} 筆 OTP、${counts.notes} 則 Note 僅存在本機，請上傳到共用庫。`
-          : "雲端共用已就緒 — 所有登入成員看到同一份 Note / OTP（Supabase shared_notes / otp_vault_entries）。",
+          : "雲端共用已就緒 — 所有登入成員看到同一份 Note / OTP（Neon shared_notes / otp_vault_entries）。",
     };
   }
   return {

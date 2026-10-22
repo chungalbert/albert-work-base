@@ -151,11 +151,22 @@ function NavIcon({ name }: { name: string }) {
   }
 }
 
+const SIDEBAR_COLLAPSED_KEY = "kssw-sidebar-collapsed";
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function Shell() {
   const { user, signOut } = useAuth();
   const { projects, projectId, setProjectId, role, initialLoading, loadError } = useStore();
   const [view, setView] = useState<ViewId>("home");
   const [showPassword, setShowPassword] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     workspace: true,
     feature: true,
@@ -187,80 +198,126 @@ function Shell() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return next;
+    });
+  };
+
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
     >
-      <aside className="sidebar" aria-label="KSSW navigation">
-        <a className="sidebar-brand" href="./" onClick={(e) => { e.preventDefault(); setView("home"); }}>
-          <span className="sidebar-brand-name">KSSW</span>
-        </a>
-
-        <nav className="sidebar-nav">
-          {groups.map((group) => {
-            const open = openGroups[group.key] !== false;
-            return (
-              <div key={group.key} className="nav-group">
-                <button
-                  type="button"
-                  className="nav-group-label"
-                  onClick={() => toggleGroup(group.key)}
-                  aria-expanded={open}
-                >
-                  <span>{group.label}</span>
-                  <span className={`chev ${open ? "open" : ""}`} aria-hidden="true">▾</span>
-                </button>
-                {open && (
-                  <ul>
-                    {group.items.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          className={currentView === item.id || (item.id === "tool" && isToolChild) ? "on" : ""}
-                          onClick={() => setView(item.id)}
-                        >
-                          <NavIcon name={item.icon} />
-                          <span>{item.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="avatar" aria-hidden="true">
-              {initial}
-              <span className="online-dot" />
-            </div>
-            <div className="sidebar-user-meta">
-              <span className="sidebar-user-name">{user?.display_name}</span>
-              <span className="sidebar-user-role">{roleLabel(Boolean(user?.is_admin), role)}</span>
-            </div>
-            <button
-              type="button"
-              className="bell-btn"
-              aria-label="Notifications"
-              title="Reminders & alerts"
-              onClick={() => setView("home")}
+      <aside
+        className={`sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}
+        aria-label="KSSW navigation"
+      >
+        <div className="sidebar-brand-row">
+          {!sidebarCollapsed && (
+            <a
+              className="sidebar-brand"
+              href="./"
+              onClick={(e) => {
+                e.preventDefault();
+                setView("home");
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M6 9a6 6 0 1 1 12 0c0 7 3 7 3 7H3s3 0 3-7" />
-                <path d="M10 19a2 2 0 0 0 4 0" />
-              </svg>
-            </button>
-          </div>
-          <button type="button" className="logout-btn" onClick={() => void signOut()}>
-            → LOGOUT
-          </button>
-          <button type="button" className="sidebar-link" onClick={() => setShowPassword(true)}>
-            Change password
+              <span className="sidebar-brand-name">KSSW</span>
+            </a>
+          )}
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              {sidebarCollapsed ? (
+                <path d="M9 18l6-6-6-6" />
+              ) : (
+                <path d="M15 18l-6-6 6-6" />
+              )}
+            </svg>
           </button>
         </div>
+
+        {!sidebarCollapsed && (
+          <>
+            <nav className="sidebar-nav">
+              {groups.map((group) => {
+                const open = openGroups[group.key] !== false;
+                return (
+                  <div key={group.key} className="nav-group">
+                    <button
+                      type="button"
+                      className="nav-group-label"
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={open}
+                    >
+                      <span>{group.label}</span>
+                      <span className={`chev ${open ? "open" : ""}`} aria-hidden="true">▾</span>
+                    </button>
+                    {open && (
+                      <ul>
+                        {group.items.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              className={currentView === item.id || (item.id === "tool" && isToolChild) ? "on" : ""}
+                              onClick={() => setView(item.id)}
+                            >
+                              <NavIcon name={item.icon} />
+                              <span>{item.label}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="sidebar-footer">
+              <div className="sidebar-user">
+                <div className="avatar" aria-hidden="true">
+                  {initial}
+                  <span className="online-dot" />
+                </div>
+                <div className="sidebar-user-meta">
+                  <span className="sidebar-user-name">{user?.display_name}</span>
+                  <span className="sidebar-user-role">{roleLabel(Boolean(user?.is_admin), role)}</span>
+                </div>
+                <button
+                  type="button"
+                  className="bell-btn"
+                  aria-label="Notifications"
+                  title="Reminders & alerts"
+                  onClick={() => setView("home")}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M6 9a6 6 0 1 1 12 0c0 7 3 7 3 7H3s3 0 3-7" />
+                    <path d="M10 19a2 2 0 0 0 4 0" />
+                  </svg>
+                </button>
+              </div>
+              <button type="button" className="logout-btn" onClick={() => void signOut()}>
+                → LOGOUT
+              </button>
+              <button type="button" className="sidebar-link" onClick={() => setShowPassword(true)}>
+                Change password
+              </button>
+            </div>
+          </>
+        )}
       </aside>
 
       <div className="shell-main">
