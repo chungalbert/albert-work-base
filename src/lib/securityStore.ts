@@ -14,6 +14,7 @@ import type {
   SecurityRosterStatus,
   SecuritySnapshot,
   SecurityWave,
+  UpdateCycleInput,
 } from "./securityTypes";
 import {
   SECURITY_STATUSES,
@@ -346,9 +347,22 @@ export const securityStore = {
     if (!quarter) throw new Error("Quarter is required");
     if (!input.projects.length) throw new Error("Select at least one project");
 
+    const waves = (
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date)
+    )
+      .map((w, i) => ({
+        id: String(w.id || `wave-${i}`),
+        name: String(w.name || "").trim() || `Wave ${i + 1}`,
+        target_date: String(w.target_date || "").trim(),
+      }))
+      .filter((w) => w.name);
+    if (waves.length === 0) throw new Error("Add at least one wave");
+
     if (await probeCloud()) {
       try {
-        return await cloudApi.createSecurityCycle(input);
+        return await cloudApi.createSecurityCycle({ ...input, waves });
       } catch (err) {
         if (!isSecurityTableMissing(err)) throw err;
         cloudOk = false;
@@ -357,10 +371,6 @@ export const securityStore = {
 
     const snap = loadLocal();
     const now = new Date().toISOString();
-    const waves =
-      input.waves && input.waves.length > 0
-        ? input.waves
-        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date);
     const legacy = legacyDatesFromWaves(waves);
     const cycle: SecurityCycle = {
       id: crypto.randomUUID(),
@@ -390,18 +400,29 @@ export const securityStore = {
     return cycle;
   },
 
-  async updateCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
-    const cleaned = waves
+  async updateCycle(cycleId: string, input: UpdateCycleInput): Promise<SecurityCycle> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Canonical name is required");
+    const quarter = input.quarter.trim();
+    if (!quarter) throw new Error("Quarter is required");
+    if (!input.projects.length) throw new Error("Select at least one project");
+
+    const cleanedWaves = (
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date)
+    )
       .map((w, i) => ({
         id: String(w.id || `wave-${i}`),
         name: String(w.name || "").trim() || `Wave ${i + 1}`,
         target_date: String(w.target_date || "").trim(),
       }))
       .filter((w) => w.name);
+    if (cleanedWaves.length === 0) throw new Error("Add at least one wave");
 
     if (await probeCloud()) {
       try {
-        return await cloudApi.updateSecurityCycleWaves(cycleId, cleaned);
+        return await cloudApi.updateSecurityCycle(cycleId, { ...input, waves: cleanedWaves });
       } catch (err) {
         if (!isSecurityTableMissing(err)) throw err;
         cloudOk = false;
@@ -412,36 +433,85 @@ export const securityStore = {
     const idx = snap.cycles.findIndex((c) => c.id === cycleId);
     if (idx < 0) throw new Error("Cycle not found");
     const prev = snap.cycles[idx];
-    const prevNames = new Set(normalizeCycleWaves(prev).map((w) => w.name));
-    const nextNames = new Set(cleaned.map((w) => w.name));
-    const renamed = new Map<string, string>();
-    // Best-effort: same index rename maps old roster wave labels → new.
     const prevList = normalizeCycleWaves(prev);
+    const prevNames = new Set(prevList.map((w) => w.name));
+    const nextNames = new Set(cleanedWaves.map((w) => w.name));
+    const renamed = new Map<string, string>();
     prevList.forEach((old, i) => {
-      const neu = cleaned[i];
+      const neu = cleanedWaves[i];
       if (neu && old.name !== neu.name) renamed.set(old.name, neu.name);
     });
 
-    const legacy = legacyDatesFromWaves(cleaned);
+    const legacy = legacyDatesFromWaves(cleanedWaves);
+    const projectIds = input.projects.map((p) => p.id);
+    const wanted = new Set(projectIds);
     const next: SecurityCycle = {
       ...prev,
+      name,
+      cycle_type: input.cycle_type.trim() || "Quarter",
+      quarter,
       ...legacy,
-      waves: cleaned,
+      waves: cleanedWaves,
+      project_ids: projectIds,
       updated_at: new Date().toISOString(),
     };
     snap.cycles[idx] = next;
 
-    snap.roster = snap.roster.map((row) => {
-      if (row.cycle_id !== cycleId) return row;
-      if (row.wave === "Not set") return row;
-      if (renamed.has(row.wave)) return { ...row, wave: renamed.get(row.wave)! };
-      if (!nextNames.has(row.wave) && prevNames.has(row.wave)) {
-        return { ...row, wave: "Not set" };
-      }
-      return row;
-    });
+    const existing = snap.roster.filter((r) => r.cycle_id === cycleId);
+    const kept = existing
+      .filter((r) => wanted.has(r.project_id))
+      .map((row) => {
+        let wave = row.wave;
+        if (wave !== "Not set") {
+          if (renamed.has(wave)) wave = renamed.get(wave)!;
+          else if (!nextNames.has(wave) && prevNames.has(wave)) wave = "Not set";
+        }
+        const proj = input.projects.find((p) => p.id === row.project_id);
+        return {
+          ...row,
+          project_name: proj?.name ?? row.project_name,
+          wave,
+        };
+      });
+    const existingIds = new Set(kept.map((r) => r.project_id));
+    const added: SecurityRosterEntry[] = input.projects
+      .filter((p) => !existingIds.has(p.id))
+      .map((p, i) => ({
+        id: crypto.randomUUID(),
+        cycle_id: cycleId,
+        project_id: p.id,
+        project_name: p.name,
+        wave: "Not set",
+        owner_id: null,
+        reviewer_id: null,
+        status: "Not Started" as SecurityRosterStatus,
+        sort_order: kept.length + i,
+      }));
+    snap.roster = [
+      ...snap.roster.filter((r) => r.cycle_id !== cycleId),
+      ...kept.map((r, i) => ({ ...r, sort_order: i })),
+      ...added,
+    ];
     saveLocal(snap);
     return next;
+  },
+
+  /** @deprecated Prefer updateCycle — kept for callers that only patch waves. */
+  async updateCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
+    const snap = await securityStore.load();
+    const cycle = snap.cycles.find((c) => c.id === cycleId);
+    if (!cycle) throw new Error("Cycle not found");
+    const roster = snap.roster.filter((r) => r.cycle_id === cycleId);
+    return securityStore.updateCycle(cycleId, {
+      name: cycle.name,
+      cycle_type: cycle.cycle_type,
+      quarter: cycle.quarter,
+      wave1_date: "",
+      wave2_date: "",
+      external_release_date: "",
+      waves,
+      projects: roster.map((r) => ({ id: r.project_id, name: r.project_name })),
+    });
   },
 
   async updateRosterEntry(

@@ -71,11 +71,14 @@ export type NewCycleInput = {
   wave1_date: string;
   wave2_date: string;
   external_release_date: string;
-  /** Optional override; default builds Wave 1 / Wave 2 / External Release from dates. */
+  /** Wave list (preferred). If omitted, built from the three legacy date fields. */
   waves?: SecurityWave[];
   /** Selected projects: id + display name (+ optional platform blurb unused in roster). */
   projects: { id: string; name: string }[];
 };
+
+/** Same payload as NewCycleInput — used by Edit cycle modal Save. */
+export type UpdateCycleInput = NewCycleInput;
 
 export type SecurityIssueInput = {
   title: string;

@@ -16,6 +16,7 @@ import type {
   SecurityRosterEntry,
   SecurityRosterStatus,
   SecurityWave,
+  UpdateCycleInput,
 } from "./securityTypes";
 import {
   SECURITY_STATUSES,
@@ -1349,13 +1350,22 @@ export const cloudApi = {
     return cycle;
   },
 
-  async updateSecurityCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
+  async updateSecurityCycle(cycleId: string, input: UpdateCycleInput): Promise<SecurityCycle> {
+    const waves =
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date);
     const legacy = legacyDatesFromWaves(waves);
+    const projectIds = input.projects.map((p) => p.id);
     const updates: Record<string, unknown> = {
+      name: input.name.trim(),
+      cycle_type: input.cycle_type.trim() || "Quarter",
+      quarter: input.quarter.trim(),
       waves,
       wave1_date: legacy.wave1_date,
       wave2_date: legacy.wave2_date,
       external_release_date: legacy.external_release_date,
+      project_ids: projectIds,
       updated_at: new Date().toISOString(),
     };
     let { data, error } = await sb()
@@ -1377,24 +1387,81 @@ export const cloudApi = {
     }
     if (error) throw error;
 
-    // Remap roster wave labels when names change / removed.
     const mapped = mapSecurityCycle(data as Record<string, unknown>);
+    const allowed = new Set(mapped.waves.map((w) => w.name));
+    const wanted = new Set(projectIds);
+
     const { data: rosterRows, error: rosterReadError } = await sb()
       .from("security_roster")
-      .select("id, wave")
+      .select("*")
       .eq("cycle_id", cycleId);
     if (rosterReadError) throw rosterReadError;
-    const allowed = new Set(mapped.waves.map((w) => w.name));
-    for (const row of rosterRows ?? []) {
-      const wave = String((row as { wave?: string }).wave ?? "Not set");
-      if (wave === "Not set" || allowed.has(wave)) continue;
-      const { error: fixError } = await sb()
-        .from("security_roster")
-        .update({ wave: "Not set", updated_at: new Date().toISOString() })
-        .eq("id", (row as { id: string }).id);
-      if (fixError) throw fixError;
+
+    const existing = (rosterRows ?? []).map((row) => mapSecurityRoster(row as Record<string, unknown>));
+    for (const row of existing) {
+      if (!wanted.has(row.project_id)) {
+        const { error: delError } = await sb().from("security_roster").delete().eq("id", row.id);
+        if (delError) throw delError;
+        continue;
+      }
+      const proj = input.projects.find((p) => p.id === row.project_id);
+      const wave =
+        row.wave !== "Not set" && !allowed.has(row.wave) ? "Not set" : row.wave;
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (proj && proj.name !== row.project_name) patch.project_name = proj.name;
+      if (wave !== row.wave) patch.wave = wave;
+      if (Object.keys(patch).length > 1) {
+        const { error: upError } = await sb().from("security_roster").update(patch).eq("id", row.id);
+        if (upError) throw upError;
+      }
+    }
+
+    const existingIds = new Set(existing.map((r) => r.project_id));
+    const toAdd = input.projects.filter((p) => !existingIds.has(p.id));
+    if (toAdd.length > 0) {
+      const rows = toAdd.map((p, i) => ({
+        cycle_id: cycleId,
+        project_id: p.id,
+        project_name: p.name,
+        wave: "Not set",
+        owner_id: null,
+        reviewer_id: null,
+        status: "Not Started",
+        sort_order: existing.length + i,
+      }));
+      const { error: insertError } = await sb().from("security_roster").insert(rows);
+      if (insertError) throw insertError;
     }
     return mapped;
+  },
+
+  async updateSecurityCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
+    const { data: cycleRow, error } = await sb()
+      .from("security_cycles")
+      .select("*")
+      .eq("id", cycleId)
+      .single();
+    if (error) throw error;
+    const cycle = mapSecurityCycle(cycleRow as Record<string, unknown>);
+    const { data: rosterRows, error: rosterError } = await sb()
+      .from("security_roster")
+      .select("project_id, project_name")
+      .eq("cycle_id", cycleId);
+    if (rosterError) throw rosterError;
+    const projects = (rosterRows ?? []).map((r) => ({
+      id: String((r as { project_id: string }).project_id),
+      name: String((r as { project_name: string }).project_name),
+    }));
+    return cloudApi.updateSecurityCycle(cycleId, {
+      name: cycle.name,
+      cycle_type: cycle.cycle_type,
+      quarter: cycle.quarter,
+      wave1_date: "",
+      wave2_date: "",
+      external_release_date: "",
+      waves,
+      projects,
+    });
   },
 
   async updateSecurityRosterEntry(

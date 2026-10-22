@@ -65,7 +65,9 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [issueCycleFilter, setIssueCycleFilter] = useState<string>("all");
 
-  const [newCycleOpen, setNewCycleOpen] = useState(false);
+  const [cycleModal, setCycleModal] = useState<null | { mode: "create" } | { mode: "edit"; cycle: SecurityCycle }>(
+    null,
+  );
   const [issueModal, setIssueModal] = useState<null | { mode: "create" | "edit"; issue?: SecurityIssue }>(
     null,
   );
@@ -73,6 +75,16 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const visibleProjects = useMemo(
     () => projects.filter((p) => p.name !== PROJECT_COLUMNS_META_NAME),
     [projects],
+  );
+
+  const projectPickerOptions = useMemo(
+    () =>
+      visibleProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        blurb: [p.platform, p.bios_id].filter(Boolean).join(" · "),
+      })),
+    [visibleProjects],
   );
 
   const profileName = useCallback(
@@ -277,27 +289,11 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             personnel={personnelMembers}
             profileName={profileName}
             onSelectCycle={setActiveCycleId}
-            onNewCycle={() => setNewCycleOpen(true)}
-            onPatchRoster={patchRoster}
-            onSaveWaves={async (cycleId, waves) => {
-              setError("");
-              try {
-                await runSave(async () => {
-                  const updated = await securityStore.updateCycleWaves(cycleId, waves);
-                  setSnap((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          cycles: prev.cycles.map((c) => (c.id === updated.id ? updated : c)),
-                        }
-                      : prev,
-                  );
-                });
-                await refresh();
-              } catch (err) {
-                setError(err instanceof Error ? err.message : String(err));
-              }
+            onNewCycle={() => setCycleModal({ mode: "create" })}
+            onEditCycle={() => {
+              if (activeCycle) setCycleModal({ mode: "edit", cycle: activeCycle });
             }}
+            onPatchRoster={patchRoster}
           />
         ) : (
           <IssueSummaryPanel
@@ -313,24 +309,34 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         )}
       </div>
 
-      {newCycleOpen && (
-        <NewCycleModal
-          projects={visibleProjects.map((p) => ({
-            id: p.id,
-            name: p.name,
-            blurb: [p.platform, p.bios_id].filter(Boolean).join(" · "),
-          }))}
-          onClose={() => setNewCycleOpen(false)}
-          onCreate={async (input) => {
+      {cycleModal && (
+        <CycleFormModal
+          mode={cycleModal.mode}
+          cycle={cycleModal.mode === "edit" ? cycleModal.cycle : null}
+          roster={
+            cycleModal.mode === "edit"
+              ? (snap?.roster.filter((r) => r.cycle_id === cycleModal.cycle.id) ?? [])
+              : []
+          }
+          projects={projectPickerOptions}
+          onClose={() => setCycleModal(null)}
+          onSubmit={async (input) => {
             setError("");
             try {
-              const cycle = await runSave(() => securityStore.createCycle(input));
-              setNewCycleOpen(false);
-              await refresh();
-              setActiveCycleId(cycle.id);
-              setTab("overview");
+              if (cycleModal.mode === "edit") {
+                await runSave(() => securityStore.updateCycle(cycleModal.cycle.id, input));
+                setCycleModal(null);
+                await refresh();
+              } else {
+                const cycle = await runSave(() => securityStore.createCycle(input));
+                setCycleModal(null);
+                await refresh();
+                setActiveCycleId(cycle.id);
+                setTab("overview");
+              }
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
+              throw err;
             }
           }}
         />
@@ -375,8 +381,8 @@ function OverviewPanel({
   profileName,
   onSelectCycle,
   onNewCycle,
+  onEditCycle,
   onPatchRoster,
-  onSaveWaves,
 }: {
   cycles: SecurityCycle[];
   allCycles: SecurityCycle[];
@@ -387,21 +393,12 @@ function OverviewPanel({
   profileName: (id: string | null) => string | null;
   onSelectCycle: (id: string) => void;
   onNewCycle: () => void;
+  onEditCycle: () => void;
   onPatchRoster: (
     id: string,
     patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
   ) => void;
-  onSaveWaves: (cycleId: string, waves: SecurityWave[]) => Promise<void>;
 }) {
-  const [editingWaves, setEditingWaves] = useState(false);
-  const [draftWaves, setDraftWaves] = useState<SecurityWave[]>([]);
-  const [waveBusy, setWaveBusy] = useState(false);
-
-  useEffect(() => {
-    setEditingWaves(false);
-    setDraftWaves(normalizeCycleWaves(activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" }));
-  }, [activeCycle?.id]);
-
   const cycleWaves = normalizeCycleWaves(
     activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" },
   );
@@ -419,33 +416,6 @@ function OverviewPanel({
     .map((c) => `${c.quarter} · ${c.project_ids.length} projects`)
     .join(" · ");
 
-  const startEditWaves = () => {
-    if (!activeCycle) return;
-    setDraftWaves(
-      normalizeCycleWaves(activeCycle).map((w) => ({ ...w })) || [
-        { id: newWaveId(), name: "Wave 1", target_date: "" },
-      ],
-    );
-    if (normalizeCycleWaves(activeCycle).length === 0) {
-      setDraftWaves([
-        { id: newWaveId(), name: "Wave 1", target_date: "" },
-        { id: newWaveId(), name: "Wave 2", target_date: "" },
-      ]);
-    }
-    setEditingWaves(true);
-  };
-
-  const saveWaves = async () => {
-    if (!activeCycle) return;
-    setWaveBusy(true);
-    try {
-      await onSaveWaves(activeCycle.id, draftWaves);
-      setEditingWaves(false);
-    } finally {
-      setWaveBusy(false);
-    }
-  };
-
   return (
     <>
       <section className="sec-cycle-card" aria-label="Active cycle">
@@ -455,90 +425,10 @@ function OverviewPanel({
           <p className="sec-cycle-sub">
             {metrics.total} projects across {metrics.waves} waves
           </p>
-          {!editingWaves ? (
-            <div className="sec-cycle-timeline-row">
-              {timeline ? <p className="sec-cycle-timeline">{timeline}</p> : (
-                <p className="sec-cycle-timeline is-empty">No waves yet</p>
-              )}
-              <button
-                type="button"
-                className="sec-edit-waves-btn"
-                onClick={startEditWaves}
-                disabled={!activeCycle}
-              >
-                Edit waves
-              </button>
-            </div>
+          {timeline ? (
+            <p className="sec-cycle-timeline">{timeline}</p>
           ) : (
-            <div className="sec-wave-editor" aria-label="Edit cycle waves">
-              {draftWaves.map((w, i) => (
-                <div key={w.id} className="sec-wave-editor-row">
-                  <input
-                    className="sec-wave-name"
-                    value={w.name}
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      setDraftWaves((prev) => prev.map((x, j) => (j === i ? { ...x, name } : x)));
-                    }}
-                    aria-label={`Wave ${i + 1} name`}
-                    placeholder="Wave name"
-                  />
-                  <input
-                    type="date"
-                    className="sec-wave-date"
-                    value={w.target_date}
-                    onChange={(e) => {
-                      const target_date = e.target.value;
-                      setDraftWaves((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, target_date } : x)),
-                      );
-                    }}
-                    aria-label={`${w.name || `Wave ${i + 1}`} date`}
-                  />
-                  <button
-                    type="button"
-                    className="sec-wave-remove"
-                    onClick={() => setDraftWaves((prev) => prev.filter((_, j) => j !== i))}
-                    disabled={draftWaves.length <= 1}
-                    aria-label={`Remove ${w.name || `wave ${i + 1}`}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              <div className="sec-wave-editor-actions">
-                <button
-                  type="button"
-                  className="sec-btn-ghost"
-                  onClick={() =>
-                    setDraftWaves((prev) => [
-                      ...prev,
-                      { id: newWaveId(), name: `Wave ${prev.length + 1}`, target_date: "" },
-                    ])
-                  }
-                >
-                  + Add wave
-                </button>
-                <div className="sec-wave-editor-right">
-                  <button
-                    type="button"
-                    className="sec-btn-ghost"
-                    onClick={() => setEditingWaves(false)}
-                    disabled={waveBusy}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="sec-btn-primary"
-                    onClick={() => void saveWaves()}
-                    disabled={waveBusy || draftWaves.every((w) => !w.name.trim())}
-                  >
-                    {waveBusy ? "Saving…" : "Save waves"}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <p className="sec-cycle-timeline is-empty">No waves yet</p>
           )}
         </div>
         <div className="sec-cycle-metrics" aria-label="Cycle metrics">
@@ -546,9 +436,19 @@ function OverviewPanel({
           <Metric label="SA BVT" value={metrics.saBvt} total={metrics.total} tone="link" />
           <Metric label="Completed" value={metrics.completed} total={metrics.total} tone="ok" />
         </div>
-        <button type="button" className="sec-new-cycle" onClick={onNewCycle}>
-          <span aria-hidden="true">+</span> New cycle
-        </button>
+        <div className="sec-cycle-actions">
+          <button
+            type="button"
+            className="sec-edit-cycle"
+            onClick={onEditCycle}
+            disabled={!activeCycle}
+          >
+            Edit
+          </button>
+          <button type="button" className="sec-new-cycle" onClick={onNewCycle}>
+            <span aria-hidden="true">+</span> New cycle
+          </button>
+        </div>
       </section>
 
       <div className="sec-cycle-pills" role="tablist" aria-label="Cycles">
@@ -850,31 +750,56 @@ function IssueSummaryPanel({
   );
 }
 
-function NewCycleModal({
+function CycleFormModal({
+  mode,
+  cycle,
+  roster,
   projects,
   onClose,
-  onCreate,
+  onSubmit,
 }: {
+  mode: "create" | "edit";
+  cycle: SecurityCycle | null;
+  roster: SecurityRosterEntry[];
   projects: { id: string; name: string; blurb: string }[];
   onClose: () => void;
-  onCreate: (input: {
+  onSubmit: (input: {
     name: string;
     cycle_type: string;
     quarter: string;
     wave1_date: string;
     wave2_date: string;
     external_release_date: string;
+    waves: SecurityWave[];
     projects: { id: string; name: string }[];
   }) => Promise<void>;
 }) {
+  const isEdit = mode === "edit";
   const quarterDefault = defaultQuarterLabel();
-  const [name, setName] = useState(`${quarterDefault} AIO`);
-  const [cycleType, setCycleType] = useState("Quarter");
-  const [quarter, setQuarter] = useState(quarterDefault);
-  const [wave1, setWave1] = useState("");
-  const [wave2, setWave2] = useState("");
-  const [external, setExternal] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const initialWaves = isEdit && cycle
+    ? (() => {
+        const w = normalizeCycleWaves(cycle);
+        return w.length > 0
+          ? w.map((x) => ({ ...x }))
+          : [
+              { id: newWaveId(), name: "Wave 1", target_date: "" },
+              { id: newWaveId(), name: "Wave 2", target_date: "" },
+            ];
+      })()
+    : [
+        { id: newWaveId(), name: "Wave 1", target_date: "" },
+        { id: newWaveId(), name: "Wave 2", target_date: "" },
+        { id: newWaveId(), name: "External Release", target_date: "" },
+      ];
+
+  const [name, setName] = useState(isEdit && cycle ? cycle.name : `${quarterDefault} AIO`);
+  const [cycleType, setCycleType] = useState(isEdit && cycle ? cycle.cycle_type : "Quarter");
+  const [quarter, setQuarter] = useState(isEdit && cycle ? cycle.quarter : quarterDefault);
+  const [waves, setWaves] = useState<SecurityWave[]>(initialWaves);
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    if (isEdit) return new Set(roster.map((r) => r.project_id));
+    return new Set();
+  });
   const [projQuery, setProjQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
@@ -905,19 +830,31 @@ function NewCycleModal({
       setFormError("Name and quarter are required");
       return;
     }
+    const cleanedWaves = waves
+      .map((w, i) => ({
+        ...w,
+        name: w.name.trim() || `Wave ${i + 1}`,
+        target_date: w.target_date.trim(),
+      }))
+      .filter((w) => w.name);
+    if (cleanedWaves.length === 0) {
+      setFormError("Add at least one wave");
+      return;
+    }
     if (selected.size === 0) {
       setFormError("Select at least one project");
       return;
     }
     setBusy(true);
     try {
-      await onCreate({
+      await onSubmit({
         name,
         cycle_type: cycleType,
         quarter,
-        wave1_date: wave1,
-        wave2_date: wave2,
-        external_release_date: external,
+        wave1_date: cleanedWaves[0]?.target_date ?? "",
+        wave2_date: cleanedWaves[1]?.target_date ?? "",
+        external_release_date: cleanedWaves[2]?.target_date ?? "",
+        waves: cleanedWaves,
         projects: projects.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, name: p.name })),
       });
     } catch (err) {
@@ -936,7 +873,7 @@ function NewCycleModal({
       >
         <div className="sec-modal-head">
           <div>
-            <h2>Add Security Update Cycle</h2>
+            <h2>{isEdit ? "Edit Security Update Cycle" : "Add Security Update Cycle"}</h2>
             <p>Define release targets and choose the projects needed for this update</p>
           </div>
           <button type="button" className="sec-modal-close" onClick={onClose} aria-label="Close">
@@ -963,19 +900,62 @@ function NewCycleModal({
           </label>
         </div>
 
-        <div className="sec-field-row sec-field-row-3">
-          <label className="sec-field">
-            <span>Wave 1 Target Date</span>
-            <input type="date" value={wave1} onChange={(e) => setWave1(e.target.value)} />
-          </label>
-          <label className="sec-field">
-            <span>Wave 2 Target Date</span>
-            <input type="date" value={wave2} onChange={(e) => setWave2(e.target.value)} />
-          </label>
-          <label className="sec-field">
-            <span>BIOS External Release Target Date</span>
-            <input type="date" value={external} onChange={(e) => setExternal(e.target.value)} />
-          </label>
+        <div className="sec-waves-fields">
+          <div className="sec-waves-fields-head">
+            <span>Waves *</span>
+            <button
+              type="button"
+              className="sec-add-wave-link"
+              onClick={() =>
+                setWaves((prev) => [
+                  ...prev,
+                  { id: newWaveId(), name: `Wave ${prev.length + 1}`, target_date: "" },
+                ])
+              }
+            >
+              + Add wave
+            </button>
+          </div>
+          <div className="sec-waves-grid">
+            {waves.map((w, i) => (
+              <div key={w.id} className="sec-wave-field">
+                <label className="sec-field">
+                  <span className="sec-wave-field-label">
+                    <input
+                      className="sec-wave-name-input"
+                      value={w.name}
+                      onChange={(e) => {
+                        const nameVal = e.target.value;
+                        setWaves((prev) => prev.map((x, j) => (j === i ? { ...x, name: nameVal } : x)));
+                      }}
+                      aria-label={`Wave ${i + 1} name`}
+                      placeholder="Wave name"
+                    />
+                    <button
+                      type="button"
+                      className="sec-wave-remove"
+                      onClick={() => setWaves((prev) => prev.filter((_, j) => j !== i))}
+                      disabled={waves.length <= 1}
+                      aria-label={`Remove ${w.name || `wave ${i + 1}`}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                  <input
+                    type="date"
+                    value={w.target_date}
+                    onChange={(e) => {
+                      const target_date = e.target.value;
+                      setWaves((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, target_date } : x)),
+                      );
+                    }}
+                    aria-label={`${w.name || `Wave ${i + 1}`} target date`}
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="sec-projects-picker">
@@ -1024,7 +1004,7 @@ function NewCycleModal({
             Cancel
           </button>
           <button type="submit" className="sec-btn-primary" disabled={busy}>
-            {busy ? "Creating…" : "Create cycle"}
+            {busy ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save" : "Create cycle"}
           </button>
         </div>
       </form>
