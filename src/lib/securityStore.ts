@@ -13,8 +13,15 @@ import type {
   SecurityRosterEntry,
   SecurityRosterStatus,
   SecuritySnapshot,
+  SecurityWave,
+  UpdateCycleInput,
 } from "./securityTypes";
-import { SECURITY_STATUSES } from "./securityTypes";
+import {
+  SECURITY_STATUSES,
+  legacyDatesFromWaves,
+  normalizeCycleWaves,
+  wavesFromLegacyDates,
+} from "./securityTypes";
 import { hasSupabaseConfig } from "./util";
 
 const KEY = "awb-security-v1";
@@ -52,16 +59,44 @@ function emptySnapshot(): SecuritySnapshot {
   return { cycles: [], roster: [], issues: [] };
 }
 
+function normalizeCycle(raw: Partial<SecurityCycle> & { id?: string }): SecurityCycle | null {
+  if (!raw?.id) return null;
+  const wave1_date = String(raw.wave1_date ?? "");
+  const wave2_date = String(raw.wave2_date ?? "");
+  const external_release_date = String(raw.external_release_date ?? "");
+  const waves = normalizeCycleWaves({
+    waves: Array.isArray(raw.waves) ? (raw.waves as SecurityWave[]) : [],
+    wave1_date,
+    wave2_date,
+    external_release_date,
+  });
+  const legacy = legacyDatesFromWaves(waves);
+  return {
+    id: String(raw.id),
+    name: String(raw.name ?? ""),
+    cycle_type: String(raw.cycle_type ?? "Quarter"),
+    quarter: String(raw.quarter ?? ""),
+    wave1_date: waves.length ? legacy.wave1_date : wave1_date,
+    wave2_date: waves.length ? legacy.wave2_date : wave2_date,
+    external_release_date: waves.length ? legacy.external_release_date : external_release_date,
+    waves,
+    project_ids: Array.isArray(raw.project_ids) ? raw.project_ids.map(String) : [],
+    created_at: String(raw.created_at ?? ""),
+    updated_at: String(raw.updated_at ?? raw.created_at ?? ""),
+  };
+}
+
 function seedSnapshot(): SecuritySnapshot {
   const now = new Date().toISOString();
+  const q4Waves = wavesFromLegacyDates("2026-11-17", "2026-12-01", "2026-12-21");
+  const q4Legacy = legacyDatesFromWaves(q4Waves);
   const q4: SecurityCycle = {
     id: "sec-cycle-2026-q4",
     name: "2026 Q4 AIO",
     cycle_type: "Quarter",
     quarter: "2026 Q4",
-    wave1_date: "2026-11-17",
-    wave2_date: "2026-12-01",
-    external_release_date: "2026-12-21",
+    ...q4Legacy,
+    waves: q4Waves,
     project_ids: [],
     created_at: now,
     updated_at: now,
@@ -74,6 +109,7 @@ function seedSnapshot(): SecuritySnapshot {
     wave1_date: "",
     wave2_date: "",
     external_release_date: "",
+    waves: wavesFromLegacyDates("", "", ""),
     project_ids: [],
     created_at: now,
     updated_at: now,
@@ -86,6 +122,7 @@ function seedSnapshot(): SecuritySnapshot {
     wave1_date: "",
     wave2_date: "",
     external_release_date: "",
+    waves: wavesFromLegacyDates("", "", ""),
     project_ids: [],
     created_at: now,
     updated_at: now,
@@ -200,8 +237,11 @@ function loadLocal(): SecuritySnapshot {
       saveLocal(seeded);
       return seeded;
     }
+    const cycles = (parsed.cycles ?? [])
+      .map((c) => normalizeCycle(c))
+      .filter((c): c is SecurityCycle => Boolean(c));
     return {
-      cycles: parsed.cycles ?? [],
+      cycles,
       roster: parsed.roster ?? [],
       issues: parsed.issues ?? [],
     };
@@ -307,9 +347,22 @@ export const securityStore = {
     if (!quarter) throw new Error("Quarter is required");
     if (!input.projects.length) throw new Error("Select at least one project");
 
+    const waves = (
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date)
+    )
+      .map((w, i) => ({
+        id: String(w.id || `wave-${i}`),
+        name: String(w.name || "").trim() || `Wave ${i + 1}`,
+        target_date: String(w.target_date || "").trim(),
+      }))
+      .filter((w) => w.name);
+    if (waves.length === 0) throw new Error("Add at least one wave");
+
     if (await probeCloud()) {
       try {
-        return await cloudApi.createSecurityCycle(input);
+        return await cloudApi.createSecurityCycle({ ...input, waves });
       } catch (err) {
         if (!isSecurityTableMissing(err)) throw err;
         cloudOk = false;
@@ -318,14 +371,14 @@ export const securityStore = {
 
     const snap = loadLocal();
     const now = new Date().toISOString();
+    const legacy = legacyDatesFromWaves(waves);
     const cycle: SecurityCycle = {
       id: crypto.randomUUID(),
       name,
       cycle_type: input.cycle_type.trim() || "Quarter",
       quarter,
-      wave1_date: input.wave1_date.trim(),
-      wave2_date: input.wave2_date.trim(),
-      external_release_date: input.external_release_date.trim(),
+      ...legacy,
+      waves,
       project_ids: input.projects.map((p) => p.id),
       created_at: now,
       updated_at: now,
@@ -345,6 +398,120 @@ export const securityStore = {
     snap.roster = [...roster, ...snap.roster];
     saveLocal(snap);
     return cycle;
+  },
+
+  async updateCycle(cycleId: string, input: UpdateCycleInput): Promise<SecurityCycle> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Canonical name is required");
+    const quarter = input.quarter.trim();
+    if (!quarter) throw new Error("Quarter is required");
+    if (!input.projects.length) throw new Error("Select at least one project");
+
+    const cleanedWaves = (
+      input.waves && input.waves.length > 0
+        ? input.waves
+        : wavesFromLegacyDates(input.wave1_date, input.wave2_date, input.external_release_date)
+    )
+      .map((w, i) => ({
+        id: String(w.id || `wave-${i}`),
+        name: String(w.name || "").trim() || `Wave ${i + 1}`,
+        target_date: String(w.target_date || "").trim(),
+      }))
+      .filter((w) => w.name);
+    if (cleanedWaves.length === 0) throw new Error("Add at least one wave");
+
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.updateSecurityCycle(cycleId, { ...input, waves: cleanedWaves });
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+
+    const snap = loadLocal();
+    const idx = snap.cycles.findIndex((c) => c.id === cycleId);
+    if (idx < 0) throw new Error("Cycle not found");
+    const prev = snap.cycles[idx];
+    const prevList = normalizeCycleWaves(prev);
+    const prevNames = new Set(prevList.map((w) => w.name));
+    const nextNames = new Set(cleanedWaves.map((w) => w.name));
+    const renamed = new Map<string, string>();
+    prevList.forEach((old, i) => {
+      const neu = cleanedWaves[i];
+      if (neu && old.name !== neu.name) renamed.set(old.name, neu.name);
+    });
+
+    const legacy = legacyDatesFromWaves(cleanedWaves);
+    const projectIds = input.projects.map((p) => p.id);
+    const wanted = new Set(projectIds);
+    const next: SecurityCycle = {
+      ...prev,
+      name,
+      cycle_type: input.cycle_type.trim() || "Quarter",
+      quarter,
+      ...legacy,
+      waves: cleanedWaves,
+      project_ids: projectIds,
+      updated_at: new Date().toISOString(),
+    };
+    snap.cycles[idx] = next;
+
+    const existing = snap.roster.filter((r) => r.cycle_id === cycleId);
+    const kept = existing
+      .filter((r) => wanted.has(r.project_id))
+      .map((row) => {
+        let wave = row.wave;
+        if (wave !== "Not set") {
+          if (renamed.has(wave)) wave = renamed.get(wave)!;
+          else if (!nextNames.has(wave) && prevNames.has(wave)) wave = "Not set";
+        }
+        const proj = input.projects.find((p) => p.id === row.project_id);
+        return {
+          ...row,
+          project_name: proj?.name ?? row.project_name,
+          wave,
+        };
+      });
+    const existingIds = new Set(kept.map((r) => r.project_id));
+    const added: SecurityRosterEntry[] = input.projects
+      .filter((p) => !existingIds.has(p.id))
+      .map((p, i) => ({
+        id: crypto.randomUUID(),
+        cycle_id: cycleId,
+        project_id: p.id,
+        project_name: p.name,
+        wave: "Not set",
+        owner_id: null,
+        reviewer_id: null,
+        status: "Not Started" as SecurityRosterStatus,
+        sort_order: kept.length + i,
+      }));
+    snap.roster = [
+      ...snap.roster.filter((r) => r.cycle_id !== cycleId),
+      ...kept.map((r, i) => ({ ...r, sort_order: i })),
+      ...added,
+    ];
+    saveLocal(snap);
+    return next;
+  },
+
+  /** @deprecated Prefer updateCycle — kept for callers that only patch waves. */
+  async updateCycleWaves(cycleId: string, waves: SecurityWave[]): Promise<SecurityCycle> {
+    const snap = await securityStore.load();
+    const cycle = snap.cycles.find((c) => c.id === cycleId);
+    if (!cycle) throw new Error("Cycle not found");
+    const roster = snap.roster.filter((r) => r.cycle_id === cycleId);
+    return securityStore.updateCycle(cycleId, {
+      name: cycle.name,
+      cycle_type: cycle.cycle_type,
+      quarter: cycle.quarter,
+      wave1_date: "",
+      wave2_date: "",
+      external_release_date: "",
+      waves,
+      projects: roster.map((r) => ({ id: r.project_id, name: r.project_name })),
+    });
   },
 
   async updateRosterEntry(

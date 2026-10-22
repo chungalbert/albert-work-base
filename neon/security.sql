@@ -12,6 +12,8 @@ create table if not exists public.security_cycles (
   wave1_date text not null default '',
   wave2_date text not null default '',
   external_release_date text not null default '',
+  /** Editable wave list: [{id,name,target_date}, ...] — see neon/security-waves.sql for existing DBs. */
+  waves jsonb not null default '[]'::jsonb,
   project_ids jsonb not null default '[]'::jsonb,
   created_by text references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
