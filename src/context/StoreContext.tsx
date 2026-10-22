@@ -68,46 +68,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Post-boot reloads (Save/Cancel/edit) must not flip PageLoadingGate / cold-start empty.
     if (!hasLoadedOnce.current) setInitialLoading(true);
     const gen = ++reloadGen.current;
-    try {
-      const [nextProjects, nextProfiles, nextAllTasks, nextLeaderIds, nextAllMembers] = await Promise.all([
+
+    const fetchBundle = async () => {
+      const [projects, profiles, tasks, leaders, members] = await Promise.all([
         api.listProjects(),
         api.listProfiles(),
         api.allTasks(),
         api.listLeaderProjectIds(),
         api.listAllMembers(),
       ]);
+      return { projects, profiles, tasks, leaders, members };
+    };
+
+    try {
+      const bundle = await fetchBundle();
       if (gen !== reloadGen.current) return;
 
       const prev = projectsRef.current;
       const retainPrior =
-        nextProjects.length === 0 &&
+        bundle.projects.length === 0 &&
         prev.length > 0 &&
         hasLoadedOnce.current &&
         !options?.allowEmpty;
-      let resolvedProjects = retainPrior ? prev : nextProjects;
+      let resolvedProjects = retainPrior ? prev : bundle.projects;
+      let nextProfiles = bundle.profiles;
+      let nextAllTasks = bundle.tasks;
+      let nextLeaderIds = bundle.leaders;
+      let nextAllMembers = bundle.members;
 
-      // Neon Data API can briefly return only __kssw_meta__ (app filters to []) right after
-      // auth while project_members/tasks already include real projects. Publishing that
-      // empty list strips allMembers by visibility → Personnel shows Unassigned for everyone.
-      const memberProjectIds = new Set(nextAllMembers.map((m) => m.project_id));
-      const projectsLookIncomplete = () => {
+      // Neon Data API can briefly return only __kssw_meta__ (app → []) and/or empty
+      // project_members/tasks for the same authenticated JWT right after auth. #66 retried
+      // projects only when members/tasks already had rows — but cold boots often empty
+      // all three together, so Dashboard settled on "No projects" with zero stats.
+      const hydrateLooksIncomplete = () => {
         if (options?.allowEmpty) return false;
-        if (resolvedProjects.length === 0) {
-          return nextAllMembers.length > 0 || nextAllTasks.length > 0;
-        }
+        if (resolvedProjects.length === 0) return true;
+        const memberProjectIds = new Set(nextAllMembers.map((m) => m.project_id));
         // +1 allows the hidden meta membership row that listProjects never returns.
-        return memberProjectIds.size > resolvedProjects.length + 1;
+        if (memberProjectIds.size > resolvedProjects.length + 1) return true;
+        // Cold boot only: projects visible but memberships still [] (same JWT window).
+        if (!hasLoadedOnce.current && nextAllMembers.length === 0) return true;
+        return false;
       };
-      for (let attempt = 0; attempt < 4 && projectsLookIncomplete(); attempt += 1) {
+
+      for (let attempt = 0; attempt < 4 && hydrateLooksIncomplete(); attempt += 1) {
         await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
         if (gen !== reloadGen.current) return;
-        const retried = await api.listProjects();
+        const again = await fetchBundle();
         if (gen !== reloadGen.current) return;
-        if (retried.length > resolvedProjects.length) {
-          resolvedProjects = retried;
-        } else if (retried.length > 0 && resolvedProjects.length === 0) {
-          resolvedProjects = retried;
+        if (again.projects.length > resolvedProjects.length) {
+          resolvedProjects = again.projects;
+        } else if (resolvedProjects.length === 0 && again.projects.length > 0) {
+          resolvedProjects = again.projects;
         }
+        if (again.members.length >= nextAllMembers.length) nextAllMembers = again.members;
+        if (again.tasks.length >= nextAllTasks.length) nextAllTasks = again.tasks;
+        if (again.profiles.length >= nextProfiles.length) nextProfiles = again.profiles;
+        if (again.leaders.length >= nextLeaderIds.length) nextLeaderIds = again.leaders;
       }
 
       const visible = new Set(resolvedProjects.map((project) => project.id));
