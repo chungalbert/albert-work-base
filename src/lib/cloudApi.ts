@@ -9,6 +9,15 @@ import {
   type ProjectFieldPatch,
 } from "./projectsUiStore";
 import type {
+  NewCycleInput,
+  SecurityCycle,
+  SecurityIssue,
+  SecurityIssueInput,
+  SecurityRosterEntry,
+  SecurityRosterStatus,
+} from "./securityTypes";
+import { SECURITY_STATUSES } from "./securityTypes";
+import type {
   AccountInput,
   CredentialRow,
   InviteInput,
@@ -25,6 +34,67 @@ import type {
 } from "./types";
 import { normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
+
+function asJsonStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
+function normalizeSecurityStatus(raw: string | undefined): SecurityRosterStatus {
+  if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
+  return "Not Started";
+}
+
+function mapSecurityCycle(row: Record<string, unknown>): SecurityCycle {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    cycle_type: String(row.cycle_type ?? "Quarter"),
+    quarter: String(row.quarter ?? ""),
+    wave1_date: String(row.wave1_date ?? ""),
+    wave2_date: String(row.wave2_date ?? ""),
+    external_release_date: String(row.external_release_date ?? ""),
+    project_ids: asJsonStringArray(row.project_ids),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? row.created_at ?? ""),
+  };
+}
+
+function mapSecurityRoster(row: Record<string, unknown>): SecurityRosterEntry {
+  return {
+    id: String(row.id),
+    cycle_id: String(row.cycle_id),
+    project_id: String(row.project_id ?? ""),
+    project_name: String(row.project_name ?? ""),
+    wave: String(row.wave ?? "Not set"),
+    owner_id: row.owner_id ? String(row.owner_id) : null,
+    reviewer_id: row.reviewer_id ? String(row.reviewer_id) : null,
+    status: normalizeSecurityStatus(row.status != null ? String(row.status) : undefined),
+    sort_order: Number(row.sort_order) || 0,
+  };
+}
+
+function mapSecurityIssue(row: Record<string, unknown>): SecurityIssue {
+  return {
+    id: String(row.id),
+    title: String(row.title ?? ""),
+    oem_request_id: String(row.oem_request_id ?? ""),
+    detail: String(row.detail ?? ""),
+    cycle_ids: asJsonStringArray(row.cycle_ids),
+    project_ids: asJsonStringArray(row.project_ids),
+    project_names: String(row.project_names ?? ""),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? row.created_at ?? ""),
+  };
+}
 
 /** Hidden project row: durable store for custom column defs when Data API cache misses project_columns. */
 export const PROJECT_COLUMNS_META_NAME = "__kssw_meta__";
@@ -1166,5 +1236,132 @@ export const cloudApi = {
       { onConflict: "id" },
     );
     if (error) throw error;
+  },
+
+  // —— Security Update (requires neon/security.sql) ——
+
+  async listSecurityCycles(): Promise<SecurityCycle[]> {
+    const { data, error } = await sb()
+      .from("security_cycles")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapSecurityCycle(row as Record<string, unknown>));
+  },
+
+  async listSecurityRoster(cycleId?: string): Promise<SecurityRosterEntry[]> {
+    let q = sb().from("security_roster").select("*").order("sort_order", { ascending: true });
+    if (cycleId) q = q.eq("cycle_id", cycleId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map((row) => mapSecurityRoster(row as Record<string, unknown>));
+  },
+
+  async listSecurityIssues(): Promise<SecurityIssue[]> {
+    const { data, error } = await sb()
+      .from("security_issues")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapSecurityIssue(row as Record<string, unknown>));
+  },
+
+  async createSecurityCycle(input: NewCycleInput): Promise<SecurityCycle> {
+    const me = await cloudApi.currentUser();
+    const now = new Date().toISOString();
+    const projectIds = input.projects.map((p) => p.id);
+    const { data, error } = await sb()
+      .from("security_cycles")
+      .insert({
+        name: input.name.trim(),
+        cycle_type: input.cycle_type.trim() || "Quarter",
+        quarter: input.quarter.trim(),
+        wave1_date: input.wave1_date.trim(),
+        wave2_date: input.wave2_date.trim(),
+        external_release_date: input.external_release_date.trim(),
+        project_ids: projectIds,
+        created_by: me?.id ?? null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    const cycle = mapSecurityCycle(data as Record<string, unknown>);
+    if (input.projects.length > 0) {
+      const rows = input.projects.map((p, i) => ({
+        cycle_id: cycle.id,
+        project_id: p.id,
+        project_name: p.name,
+        wave: "Not set",
+        owner_id: null,
+        reviewer_id: null,
+        status: "Not Started",
+        sort_order: i,
+      }));
+      const { error: rosterError } = await sb().from("security_roster").insert(rows);
+      if (rosterError) throw rosterError;
+    }
+    return cycle;
+  },
+
+  async updateSecurityRosterEntry(
+    id: string,
+    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+  ): Promise<SecurityRosterEntry> {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.wave !== undefined) updates.wave = patch.wave;
+    if (patch.owner_id !== undefined) updates.owner_id = patch.owner_id;
+    if (patch.reviewer_id !== undefined) updates.reviewer_id = patch.reviewer_id;
+    if (patch.status !== undefined) updates.status = normalizeSecurityStatus(patch.status);
+    const { data, error } = await sb()
+      .from("security_roster")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityRoster(data as Record<string, unknown>);
+  },
+
+  async createSecurityIssue(input: SecurityIssueInput): Promise<SecurityIssue> {
+    const me = await cloudApi.currentUser();
+    const now = new Date().toISOString();
+    const { data, error } = await sb()
+      .from("security_issues")
+      .insert({
+        title: input.title.trim(),
+        oem_request_id: (input.oem_request_id ?? "").trim(),
+        detail: (input.detail ?? "").trim(),
+        cycle_ids: input.cycle_ids ?? [],
+        project_ids: input.project_ids ?? [],
+        project_names: (input.project_names ?? "").trim(),
+        created_by: me?.id ?? null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityIssue(data as Record<string, unknown>);
+  },
+
+  async updateSecurityIssue(id: string, input: SecurityIssueInput): Promise<SecurityIssue> {
+    const { data, error } = await sb()
+      .from("security_issues")
+      .update({
+        title: input.title.trim(),
+        oem_request_id: (input.oem_request_id ?? "").trim(),
+        detail: (input.detail ?? "").trim(),
+        cycle_ids: input.cycle_ids ?? [],
+        project_ids: input.project_ids ?? [],
+        project_names: (input.project_names ?? "").trim(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityIssue(data as Record<string, unknown>);
   },
 };

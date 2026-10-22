@@ -1,0 +1,438 @@
+/**
+ * Security Update store.
+ * - Local: `awb-security-v1` (always available).
+ * - Neon: `security_cycles` / `security_roster` / `security_issues` when neon/security.sql is applied.
+ * Falls back to local when cloud tables are missing (PGRST205 / 42P01).
+ */
+import { cloudApi } from "./cloudApi";
+import type {
+  NewCycleInput,
+  SecurityCycle,
+  SecurityIssue,
+  SecurityIssueInput,
+  SecurityRosterEntry,
+  SecurityRosterStatus,
+  SecuritySnapshot,
+} from "./securityTypes";
+import { SECURITY_STATUSES } from "./securityTypes";
+import { hasSupabaseConfig } from "./util";
+
+const KEY = "awb-security-v1";
+const CLOUD_PROBE_TTL_MS = 20_000;
+
+let cloudOk: boolean | null = null;
+let cloudProbedAt = 0;
+
+function isSecurityTableMissing(err: unknown): boolean {
+  const msg = (
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message?: unknown }).message ?? "")
+      : err instanceof Error
+        ? err.message
+        : String(err ?? "")
+  ).toLowerCase();
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    msg.includes("could not find the table") ||
+    msg.includes("schema cache") ||
+    (msg.includes("does not exist") && msg.includes("security_")) ||
+    msg.includes("security_cycles") ||
+    msg.includes("security_roster") ||
+    msg.includes("security_issues")
+  );
+}
+
+function emptySnapshot(): SecuritySnapshot {
+  return { cycles: [], roster: [], issues: [] };
+}
+
+function seedSnapshot(): SecuritySnapshot {
+  const now = new Date().toISOString();
+  const q4: SecurityCycle = {
+    id: "sec-cycle-2026-q4",
+    name: "2026 Q4 AIO",
+    cycle_type: "Quarter",
+    quarter: "2026 Q4",
+    wave1_date: "2026-11-17",
+    wave2_date: "2026-12-01",
+    external_release_date: "2026-12-21",
+    project_ids: [],
+    created_at: now,
+    updated_at: now,
+  };
+  const q3: SecurityCycle = {
+    id: "sec-cycle-2026-q3",
+    name: "2026 Q3 AIO",
+    cycle_type: "Quarter",
+    quarter: "2026 Q3",
+    wave1_date: "",
+    wave2_date: "",
+    external_release_date: "",
+    project_ids: [],
+    created_at: now,
+    updated_at: now,
+  };
+  const q2: SecurityCycle = {
+    id: "sec-cycle-2026-q2",
+    name: "2026 Q2 AIO",
+    cycle_type: "Quarter",
+    quarter: "2026 Q2",
+    wave1_date: "",
+    wave2_date: "",
+    external_release_date: "",
+    project_ids: [],
+    created_at: now,
+    updated_at: now,
+  };
+
+  const projectNames = [
+    "JOC10",
+    "JOC20",
+    "KOC10",
+    "KOC20",
+    "LOA70",
+    "LOC20",
+    "LOC21",
+    "LOC22",
+    "LOC30",
+    "LOC75",
+    "LOX70",
+    "MOC70",
+  ];
+  const q4Roster: SecurityRosterEntry[] = projectNames.map((name, i) => ({
+    id: `sec-roster-q4-${i}`,
+    cycle_id: q4.id,
+    project_id: `seed-${name}`,
+    project_name: name,
+    wave: "Not set",
+    owner_id: null,
+    reviewer_id: null,
+    status: "Not Started",
+    sort_order: i,
+  }));
+  q4.project_ids = q4Roster.map((r) => r.project_id);
+
+  // Lightweight Q3/Q2 counts to match reference pills (14 / 11) without inventing full rosters.
+  const padRoster = (cycleId: string, count: number, prefix: string): SecurityRosterEntry[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `sec-roster-${prefix}-${i}`,
+      cycle_id: cycleId,
+      project_id: `${prefix}-${i}`,
+      project_name: `P${prefix.toUpperCase()}${String(i + 1).padStart(2, "0")}`,
+      wave: "Not set",
+      owner_id: null,
+      reviewer_id: null,
+      status: "Not Started" as SecurityRosterStatus,
+      sort_order: i,
+    }));
+  const q3Roster = padRoster(q3.id, 14, "q3");
+  const q2Roster = padRoster(q2.id, 11, "q2");
+  q3.project_ids = q3Roster.map((r) => r.project_id);
+  q2.project_ids = q2Roster.map((r) => r.project_id);
+
+  const issueTitles = [
+    "UEFIDiag & AFU",
+    "CA 2023 Key在Secure Boot disable時會被清除",
+    "CP20260625_0019 Commercial Vantage",
+    "Deploy PTL PR3 pCode, PMC, SOC microcode update",
+    "GB 46864-2025Secure Wipe Update",
+    "New CSOT Panel ID",
+    "Remain issue",
+    "WA_ Change RETRY_CNT_MAX from 1 to 3 for WHEA",
+    "wFlashGUI update for JY touch support",
+    "Y26Q1 LEN-211077 Security BIOS Update",
+    "Y26Q1 LEN-212211 Security BIOS Update",
+    "Y26Q1 LEN-213831 Security BIOS Update",
+    "Y26Q1 LEN-213835 Security BIOS Update",
+    "Y26Q2 LEN-218238 Security BIOS Update",
+    "Y26Q2 LEN-220290 Security BIOS Update",
+    "Y26Q3 LEN-223112 Security BIOS Update",
+    "Y26Q3 LEN-223492 Security BIOS Update",
+    "Y26Q3 LEN-223501 Security BIOS Update",
+    "Y26Q3 VRT010&VRT011 Security BIOS Update",
+  ];
+
+  const issues: SecurityIssue[] = issueTitles.map((title, i) => {
+    let cycle_ids: string[] = [];
+    if (i < 2) cycle_ids = [q4.id];
+    else if (i < 11) cycle_ids = [q3.id];
+    else cycle_ids = [q2.id];
+    // Overlap a few into multiple cycles like the reference.
+    if (i === 2) cycle_ids = [q4.id, q3.id];
+    if (i === 7) cycle_ids = [q3.id, q2.id];
+    return {
+      id: `sec-issue-${i}`,
+      title,
+      oem_request_id: title.startsWith("CP2026") ? "CP20260625_0019" : "",
+      detail: i === 2 ? "Commercial Vantage security package" : "",
+      cycle_ids,
+      project_ids: q4.project_ids.slice(0, 6),
+      project_names: projectNames.slice(0, 8).join(", "),
+      created_at: now,
+      updated_at: now,
+    };
+  });
+
+  return {
+    cycles: [q4, q3, q2],
+    roster: [...q4Roster, ...q3Roster, ...q2Roster],
+    issues,
+  };
+}
+
+function loadLocal(): SecuritySnapshot {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) {
+      const seeded = seedSnapshot();
+      saveLocal(seeded);
+      return seeded;
+    }
+    const parsed = JSON.parse(raw) as SecuritySnapshot;
+    if (!parsed || !Array.isArray(parsed.cycles)) {
+      const seeded = seedSnapshot();
+      saveLocal(seeded);
+      return seeded;
+    }
+    return {
+      cycles: parsed.cycles ?? [],
+      roster: parsed.roster ?? [],
+      issues: parsed.issues ?? [],
+    };
+  } catch {
+    return seedSnapshot();
+  }
+}
+
+function saveLocal(snap: SecuritySnapshot) {
+  localStorage.setItem(KEY, JSON.stringify(snap));
+}
+
+function normalizeStatus(raw: string | undefined): SecurityRosterStatus {
+  if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
+  return "Not Started";
+}
+
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
+async function probeCloud(): Promise<boolean> {
+  if (!hasSupabaseConfig()) {
+    cloudOk = false;
+    return false;
+  }
+  const now = Date.now();
+  if (cloudOk !== null && now - cloudProbedAt < CLOUD_PROBE_TTL_MS) return cloudOk;
+  try {
+    await cloudApi.listSecurityCycles();
+    cloudOk = true;
+  } catch (err) {
+    cloudOk = isSecurityTableMissing(err) ? false : false;
+    if (!isSecurityTableMissing(err)) {
+      // Network/auth — keep probing next time; use local for this call.
+      cloudProbedAt = now;
+      return false;
+    }
+  }
+  cloudProbedAt = now;
+  return Boolean(cloudOk);
+}
+
+function formatMmDd(isoOrSlash: string): string {
+  const s = isoOrSlash.trim();
+  if (!s) return "";
+  // Accept YYYY-MM-DD or locale 年/月/日 already stored as ISO.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}-${m[3]}`;
+  return s;
+}
+
+export function securityDisplayDate(isoOrSlash: string): string {
+  return formatMmDd(isoOrSlash);
+}
+
+export function cycleMetrics(roster: SecurityRosterEntry[]) {
+  const total = roster.length;
+  const count = (status: SecurityRosterStatus) => roster.filter((r) => r.status === status).length;
+  const wavesSet = new Set(
+    roster.map((r) => r.wave).filter((w) => w && w !== "Not set"),
+  );
+  return {
+    total,
+    waves: wavesSet.size,
+    internal: count("Internal release"),
+    saBvt: count("SA BVT"),
+    completed: count("Completed"),
+  };
+}
+
+export const securityStore = {
+  async load(): Promise<SecuritySnapshot> {
+    if (await probeCloud()) {
+      try {
+        const [cycles, roster, issues] = await Promise.all([
+          cloudApi.listSecurityCycles(),
+          cloudApi.listSecurityRoster(),
+          cloudApi.listSecurityIssues(),
+        ]);
+        return { cycles, roster, issues };
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    return loadLocal();
+  },
+
+  async createCycle(input: NewCycleInput): Promise<SecurityCycle> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Canonical name is required");
+    const quarter = input.quarter.trim();
+    if (!quarter) throw new Error("Quarter is required");
+    if (!input.projects.length) throw new Error("Select at least one project");
+
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.createSecurityCycle(input);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+
+    const snap = loadLocal();
+    const now = new Date().toISOString();
+    const cycle: SecurityCycle = {
+      id: crypto.randomUUID(),
+      name,
+      cycle_type: input.cycle_type.trim() || "Quarter",
+      quarter,
+      wave1_date: input.wave1_date.trim(),
+      wave2_date: input.wave2_date.trim(),
+      external_release_date: input.external_release_date.trim(),
+      project_ids: input.projects.map((p) => p.id),
+      created_at: now,
+      updated_at: now,
+    };
+    const roster: SecurityRosterEntry[] = input.projects.map((p, i) => ({
+      id: crypto.randomUUID(),
+      cycle_id: cycle.id,
+      project_id: p.id,
+      project_name: p.name,
+      wave: "Not set",
+      owner_id: null,
+      reviewer_id: null,
+      status: "Not Started",
+      sort_order: i,
+    }));
+    snap.cycles = [cycle, ...snap.cycles];
+    snap.roster = [...roster, ...snap.roster];
+    saveLocal(snap);
+    return cycle;
+  },
+
+  async updateRosterEntry(
+    id: string,
+    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+  ): Promise<SecurityRosterEntry> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.updateSecurityRosterEntry(id, patch);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const snap = loadLocal();
+    const idx = snap.roster.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error("Roster entry not found");
+    const next = { ...snap.roster[idx] };
+    if (patch.wave !== undefined) next.wave = patch.wave;
+    if (patch.owner_id !== undefined) next.owner_id = patch.owner_id;
+    if (patch.reviewer_id !== undefined) next.reviewer_id = patch.reviewer_id;
+    if (patch.status !== undefined) next.status = normalizeStatus(patch.status);
+    snap.roster[idx] = next;
+    saveLocal(snap);
+    return next;
+  },
+
+  async createIssue(input: SecurityIssueInput): Promise<SecurityIssue> {
+    const title = input.title.trim();
+    if (!title) throw new Error("Title is required");
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.createSecurityIssue(input);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const snap = loadLocal();
+    const now = new Date().toISOString();
+    const issue: SecurityIssue = {
+      id: crypto.randomUUID(),
+      title,
+      oem_request_id: (input.oem_request_id ?? "").trim(),
+      detail: (input.detail ?? "").trim(),
+      cycle_ids: input.cycle_ids ?? [],
+      project_ids: input.project_ids ?? [],
+      project_names: (input.project_names ?? "").trim(),
+      created_at: now,
+      updated_at: now,
+    };
+    snap.issues = [issue, ...snap.issues];
+    saveLocal(snap);
+    return issue;
+  },
+
+  async updateIssue(id: string, input: SecurityIssueInput): Promise<SecurityIssue> {
+    const title = input.title.trim();
+    if (!title) throw new Error("Title is required");
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.updateSecurityIssue(id, input);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const snap = loadLocal();
+    const idx = snap.issues.findIndex((i) => i.id === id);
+    if (idx < 0) throw new Error("Issue not found");
+    const prev = snap.issues[idx];
+    const next: SecurityIssue = {
+      ...prev,
+      title,
+      oem_request_id: (input.oem_request_id ?? prev.oem_request_id).trim(),
+      detail: (input.detail ?? prev.detail).trim(),
+      cycle_ids: input.cycle_ids ?? prev.cycle_ids,
+      project_ids: input.project_ids ?? prev.project_ids,
+      project_names: (input.project_names ?? prev.project_names).trim(),
+      updated_at: new Date().toISOString(),
+    };
+    snap.issues[idx] = next;
+    saveLocal(snap);
+    return next;
+  },
+
+  /** Exported for cloudApi row mapping. */
+  _asStringArray: asStringArray,
+  _normalizeStatus: normalizeStatus,
+  _emptySnapshot: emptySnapshot,
+};
