@@ -10,6 +10,7 @@ export const STORE_BOOT_VIEWS = new Set<ViewId>([
   "gantt",
   "people",
   "tasks",
+  "security",
 ]);
 
 /**

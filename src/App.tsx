@@ -191,8 +191,9 @@ function Shell() {
   const isChat = currentView === "chat";
   const isOtp = currentView === "otp";
   const isWhea = currentView === "whea";
+  const isSecurity = currentView === "security";
   const isToolChild = isOtp || isWhea;
-  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isToolChild;
+  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isToolChild || isSecurity;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -212,7 +213,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${isSecurity ? " shell-security" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
     >
       <aside
         className={`sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -352,14 +353,13 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}${isSecurity ? " page-security" : ""}`}
         >
           {viewNeedsStoreBoot(currentView) ? (
             <PageLoadingGate>
               {!hideChrome &&
                 currentView !== "guides" &&
                 currentView !== "tool" &&
-                currentView !== "security" &&
                 currentView !== "inv-pcr" && <ReminderBanner />}
               {currentView === "home" && <DashboardPage />}
               {currentView === "projects" && (
@@ -367,6 +367,9 @@ function Shell() {
               )}
               {currentView === "people" && (
                 <PeoplePage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "security" && (
+                <SecurityPage onGoDashboard={() => setView("home")} />
               )}
               {currentView === "gantt" && (
                 <Suspense
@@ -382,7 +385,6 @@ function Shell() {
             </PageLoadingGate>
           ) : (
             <>
-              {currentView === "security" && <SecurityPage />}
               {currentView === "inv-pcr" && <InvPcrPage />}
               {currentView === "guides" && <GuidesPage />}
               {currentView === "notes" && (
