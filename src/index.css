@@ -1973,6 +1973,27 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   white-space: nowrap;
 }
 
+/** Idle Edit on Projects list — primary accent so it reads next to Search / ⋯ */
+.pi-edit-entry-btn {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(76, 110, 245, 0.45);
+}
+
+.pi-edit-entry-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.pi-edit-entry-btn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+
 .pi-col-head {
   display: flex;
   flex-direction: column;
