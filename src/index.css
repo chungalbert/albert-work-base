@@ -119,12 +119,33 @@ a:hover { text-decoration: underline; }
   align-self: flex-start;
   height: 100vh;
   overflow-y: auto;
-  border-right: 1px solid #12131c;
+  border-right: 1px solid var(--sidebar-line);
+  transition: width 0.18s ease;
+}
+
+.sidebar.is-collapsed {
+  width: 48px;
+  overflow-x: hidden;
+}
+
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 10px 14px 16px;
+  min-height: 56px;
+}
+
+.sidebar.is-collapsed .sidebar-brand-row {
+  padding: 14px 8px;
+  justify-content: center;
 }
 
 .sidebar-brand {
   display: block;
-  padding: 22px 20px 18px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   color: #fff;
   text-decoration: none;
 }
@@ -138,6 +159,29 @@ a:hover { text-decoration: underline; }
   font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1;
+}
+
+.sidebar-toggle {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.sidebar-toggle svg {
+  display: block;
 }
 
 .sidebar-nav {
@@ -393,7 +437,9 @@ a:hover { text-decoration: underline; }
   flex: 1;
 }
 
-.shell .page-shell:not(.page-pi):not(.page-personnel) {
+/* Full-bleed shells (PI / Personnel / Note / Chat / OTP / Tool detail) set their own padding: 0.
+   Exclude them here — this selector's specificity would otherwise leave a 16px left gap. */
+.shell .page-shell:not(.page-pi):not(.page-personnel):not(.page-note):not(.page-chat):not(.page-otp):not(.page-tool-detail) {
   padding: 0 16px 24px;
 }
 
@@ -4272,6 +4318,16 @@ select.pi-state {
     height: auto;
     position: relative;
     max-height: none;
+  }
+  .sidebar.is-collapsed {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+  }
+  .sidebar.is-collapsed .sidebar-brand-row {
+    justify-content: flex-end;
+    padding: 8px 12px;
+    min-height: 44px;
   }
   .tool-grid, .grid-2, .add-member-row, .report-meta { grid-template-columns: 1fr 1fr; }
   .page-head h1 { font-size: 22px; }
