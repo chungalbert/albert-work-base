@@ -20,6 +20,7 @@ import {
 } from "../lib/projectsUiStore";
 import {
   isTaskOpen,
+  normalizePersonnelRole,
   TASK_STATUSES,
   type AnalyzedNote,
   type Profile,
@@ -180,8 +181,9 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [analyzed, setAnalyzed] = useState("");
   const [showNewIssue, setShowNewIssue] = useState(false);
 
-  const isAdmin = Boolean(user?.is_admin);
-  const canCreate = Boolean(user?.is_admin || role === "leader");
+  /** Match Personnel: Neon overlays may set personnel_role Admin while raw is_admin lags. */
+  const isAdmin = Boolean(user && normalizePersonnelRole(user) === "Admin");
+  const canCreate = Boolean(isAdmin || role === "leader");
   /** Column tools (+ ADD / Remove / reorder) only while Admin is in edit mode on the list. */
   const canManageColumns = isAdmin && mode === "list" && editMode;
   const visibleColumns = editMode ? draftColumns : managedColumns;
@@ -513,7 +515,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     }
   };
 
-  const canManage = Boolean(project && (user?.is_admin || role === "leader"));
+  const canManage = Boolean(project && (isAdmin || role === "leader"));
 
   return (
     <div className="pi-page">
@@ -562,8 +564,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
           {isAdmin && mode === "list" && !editMode && (
             <button
               type="button"
-              className="pi-add-col"
+              className="pi-btn-primary pi-edit-entry-btn"
               disabled={listLoading || busyId === "edit-save"}
+              title="Edit project fields and columns (Admin)"
+              aria-label="Edit project fields and columns"
               onClick={enterEditMode}
             >
               Edit
@@ -648,6 +652,18 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
             </button>
             {moreOpen && (
               <div className="pi-popover pi-popover-menu">
+                {isAdmin && mode === "list" && !editMode && (
+                  <button
+                    type="button"
+                    disabled={listLoading || busyId === "edit-save"}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      enterEditMode();
+                    }}
+                  >
+                    Edit projects…
+                  </button>
+                )}
                 {mode === "list" && canCreate && (
                   <button
                     type="button"

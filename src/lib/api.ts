@@ -649,7 +649,19 @@ export const api = {
     const profiles = await cloudApi.listProfiles();
     const base = profiles.find((p) => p.id === userId);
     if (!base) throw new Error("找不到這位人員");
-    return personnelUiStore.applyOverlay(userId, base, patch);
+    // Neon: keep profiles.is_admin in sync when Personnel role changes (Edit / column gates).
+    if (hasNeonConfig() && patch.personnel_role !== undefined) {
+      await cloudApi.syncPersonnelProfile(userId, {
+        display_name: patch.display_name,
+        unit: patch.unit,
+        is_admin: patch.personnel_role === "Admin",
+      });
+    }
+    const refreshed =
+      hasNeonConfig() && patch.personnel_role !== undefined
+        ? ((await cloudApi.listProfiles()).find((p) => p.id === userId) ?? base)
+        : base;
+    return personnelUiStore.applyOverlay(userId, refreshed, patch);
   },
   async setPersonProjects(userId: string, projectIds: string[]) {
     if (personnelUiStore.listExtraMembers().some((p) => p.id === userId)) {
