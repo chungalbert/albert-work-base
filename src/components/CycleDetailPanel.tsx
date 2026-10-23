@@ -678,6 +678,20 @@ export function CycleDetailPanel({
                             className={`sec-detail-date-input${dateVal ? "" : " is-empty"}`}
                             value={dateVal}
                             onChange={(e) => setReleaseCell(p.id, row.key, e.target.value)}
+                            onClick={(e) => {
+                              const el = e.currentTarget;
+                              // Ensure the native picker opens even when column chrome is tight.
+                              const picker = (
+                                el as HTMLInputElement & { showPicker?: () => void }
+                              ).showPicker;
+                              if (typeof picker === "function") {
+                                try {
+                                  picker.call(el);
+                                } catch {
+                                  /* NotAllowedError / unsupported — fall back to default. */
+                                }
+                              }
+                            }}
                             aria-label={`${row.label} · ${p.name}`}
                             title={dateVal || "YYYY-MM-DD"}
                           />

@@ -5776,12 +5776,14 @@ button.sec-th-affordance:disabled {
   color: var(--sec-muted);
   font-size: 12px;
 }
-.sec-detail-date-cell {
-  padding: 8px 10px;
+/* Beat global `input[type=date]{min-width:12.5rem}` + matrix `td{overflow:hidden}`
+   so the picker indicator stays inside --sec-proj-col and remains clickable. */
+.sec-detail-matrix td.sec-detail-date-cell {
+  padding: 6px 6px;
   max-width: var(--sec-proj-col);
   overflow: hidden;
 }
-.sec-detail-date-input {
+input.sec-detail-date-input[type="date"] {
   display: block;
   width: 100%;
   min-width: 0;
@@ -5792,51 +5794,65 @@ button.sec-th-affordance:disabled {
   color: var(--sec-text);
   -webkit-text-fill-color: var(--sec-text);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 5px 4px 5px 6px;
   font: inherit;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color-scheme: dark;
   caret-color: var(--sec-text);
-  overflow: hidden;
+  /* Do not clip the native calendar affordance inside the control. */
+  overflow: visible;
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
-.sec-detail-date-input:focus {
+input.sec-detail-date-input[type="date"]:focus {
   outline: none;
   border-color: var(--sec-link);
   background: rgba(96, 165, 250, 0.08);
 }
-.sec-detail-date-input::-webkit-calendar-picker-indicator {
+input.sec-detail-date-input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
-  opacity: 0.85;
+  opacity: 0.9;
   filter: none;
+  margin: 0;
+  padding: 0;
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
 }
-.sec-detail-date-input::-webkit-datetime-edit,
-.sec-detail-date-input::-webkit-datetime-edit-fields-wrapper,
-.sec-detail-date-input::-webkit-datetime-edit-text,
-.sec-detail-date-input::-webkit-datetime-edit-year-field,
-.sec-detail-date-input::-webkit-datetime-edit-month-field,
-.sec-detail-date-input::-webkit-datetime-edit-day-field {
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit,
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit-text,
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit-year-field,
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit-month-field,
+input.sec-detail-date-input[type="date"]::-webkit-datetime-edit-day-field {
   color: var(--sec-text);
   -webkit-text-fill-color: var(--sec-text);
   padding: 0;
+  min-width: 0;
 }
 /* Empty date: mute locale chrome (avoid loud 年/月/日) — en-CA forces YYYY-MM-DD. */
-.sec-detail-date-input.is-empty,
-.sec-detail-date-input:invalid {
+input.sec-detail-date-input[type="date"].is-empty,
+input.sec-detail-date-input[type="date"]:invalid {
   color: var(--sec-muted);
   -webkit-text-fill-color: var(--sec-muted);
 }
-.sec-detail-date-input.is-empty::-webkit-datetime-edit,
-.sec-detail-date-input.is-empty::-webkit-datetime-edit-text,
-.sec-detail-date-input.is-empty::-webkit-datetime-edit-year-field,
-.sec-detail-date-input.is-empty::-webkit-datetime-edit-month-field,
-.sec-detail-date-input.is-empty::-webkit-datetime-edit-day-field,
-.sec-detail-date-input:invalid::-webkit-datetime-edit,
-.sec-detail-date-input:invalid::-webkit-datetime-edit-text,
-.sec-detail-date-input:invalid::-webkit-datetime-edit-year-field,
-.sec-detail-date-input:invalid::-webkit-datetime-edit-month-field,
-.sec-detail-date-input:invalid::-webkit-datetime-edit-day-field {
+input.sec-detail-date-input[type="date"].is-empty::-webkit-datetime-edit,
+input.sec-detail-date-input[type="date"].is-empty::-webkit-datetime-edit-text,
+input.sec-detail-date-input[type="date"].is-empty::-webkit-datetime-edit-year-field,
+input.sec-detail-date-input[type="date"].is-empty::-webkit-datetime-edit-month-field,
+input.sec-detail-date-input[type="date"].is-empty::-webkit-datetime-edit-day-field,
+input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit,
+input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-text,
+input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-year-field,
+input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-month-field,
+input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-field {
   color: var(--sec-muted);
   -webkit-text-fill-color: var(--sec-muted);
 }
