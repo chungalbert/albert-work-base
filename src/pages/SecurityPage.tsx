@@ -185,7 +185,17 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     );
   }, [snap, activeCycle, query, profileName]);
 
-  const metrics = useMemo(() => cycleMetrics(cycleRoster), [cycleRoster]);
+  const activeCycleWaveCount = useMemo(
+    () =>
+      normalizeCycleWaves(
+        activeCycle ?? { waves: [], wave1_date: "", wave2_date: "", external_release_date: "" },
+      ).length,
+    [activeCycle],
+  );
+  const metrics = useMemo(
+    () => cycleMetrics(cycleRoster, activeCycleWaveCount),
+    [cycleRoster, activeCycleWaveCount],
+  );
 
   const filteredCycles = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -602,10 +612,22 @@ function OverviewPanel({
   );
   const waveSelectOptions = rosterWaveOptions(activeCycle);
 
+  const waveProjectCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of roster) {
+      const key = (row.wave || "").trim();
+      if (!key || key === "Not set") continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [roster]);
+
   const timeline = cycleWaves
     .map((w) => {
       const d = securityDisplayDate(w.target_date);
-      return d ? `${w.name} ${d}` : w.name;
+      const n = waveProjectCounts.get(w.name.trim()) ?? 0;
+      const label = d ? `${w.name} ${d}` : w.name;
+      return `${label} (${n})`;
     })
     .join(" · ");
 
