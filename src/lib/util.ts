@@ -30,6 +30,11 @@ export function usernameFromEmail(email: string, taken: Set<string>): string {
 
 export const DEFAULT_PASSWORD = "abcd1234";
 
+/** App version: `1.<latest merged feature PR#>`. Bump when that PR lands. */
+export const APP_VERSION = "1.92";
+
+export const LANDING_FOOTER_LABEL = `KSSW_Albert ${APP_VERSION}`;
+
 export function randomPassword(): string {
   return DEFAULT_PASSWORD;
 }
