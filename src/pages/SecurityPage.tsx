@@ -155,15 +155,16 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
   const cycleRoster = useMemo(() => {
     if (!snap || !activeCycle) return [] as SecurityRosterEntry[];
+    // Stable order: roster sort_order (cycle project order), then Compal name.
+    // Do not re-sort by Wave when a row's Wave changes.
     const rows = snap.roster
       .filter((r) => r.cycle_id === activeCycle.id)
       .slice()
-      .sort((a, b) => {
-        const waveRank = (w: string) => (w === "Wave 1" ? 0 : w === "Wave 2" ? 1 : 2);
-        const d = waveRank(a.wave) - waveRank(b.wave);
-        if (d !== 0) return d;
-        return a.sort_order - b.sort_order || a.project_name.localeCompare(b.project_name);
-      });
+      .sort(
+        (a, b) =>
+          a.sort_order - b.sort_order ||
+          a.project_name.localeCompare(b.project_name, undefined, { sensitivity: "base" }),
+      );
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
@@ -238,6 +239,34 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  /** Batch-assign Wave or Reviewer to many roster rows (one Saving indicator). */
+  const patchRosterMany = async (
+    ids: string[],
+    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+  ) => {
+    if (ids.length === 0) return;
+    setError("");
+    try {
+      await runSave(async () => {
+        const updated = await Promise.all(
+          ids.map((id) => securityStore.updateRosterEntry(id, patch)),
+        );
+        const byId = new Map(updated.map((r) => [r.id, r]));
+        setSnap((prev) =>
+          prev
+            ? {
+                ...prev,
+                roster: prev.roster.map((r) => byId.get(r.id) ?? r),
+              }
+            : prev,
+        );
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
   };
 
@@ -372,6 +401,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               if (activeCycle) setCycleModal({ mode: "edit", cycle: activeCycle });
             }}
             onPatchRoster={patchRoster}
+            onPatchRosterMany={patchRosterMany}
           />
         ) : (
           <IssueSummaryPanel
@@ -463,6 +493,7 @@ function OverviewPanel({
   onNewCycle,
   onEditCycle,
   onPatchRoster,
+  onPatchRosterMany,
 }: {
   cycles: SecurityCycle[];
   allCycles: SecurityCycle[];
@@ -480,7 +511,13 @@ function OverviewPanel({
     id: string,
     patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
   ) => void;
+  onPatchRosterMany: (
+    ids: string[],
+    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+  ) => Promise<void>;
 }) {
+  const [batchModal, setBatchModal] = useState<null | "wave" | "reviewer">(null);
+
   const projectById = useMemo(() => {
     const map = new Map<string, { id: string; name: string; lenovo_name?: string }>();
     for (const p of projects) map.set(p.id, p);
@@ -578,7 +615,7 @@ function OverviewPanel({
         <div className="sec-roster-head">
           <h2>Project roster</h2>
           <p>
-            {roster.length} entries · sorted by wave
+            {roster.length} {roster.length === 1 ? "entry" : "entries"}
           </p>
         </div>
         <div className="sec-roster-table-wrap">
@@ -586,13 +623,33 @@ function OverviewPanel({
             <thead>
               <tr>
                 <th>Compal Project name</th>
-                <th>LENOVO PROJECT NAME</th>
+                <th>Lenovo Project Name</th>
                 <th>
-                  Wave <span className="sec-th-affordance" aria-hidden="true">+</span>
+                  Wave{" "}
+                  <button
+                    type="button"
+                    className="sec-th-affordance"
+                    onClick={() => setBatchModal("wave")}
+                    disabled={roster.length === 0}
+                    aria-label="Batch assign Wave"
+                    title="Batch assign Wave"
+                  >
+                    +
+                  </button>
                 </th>
                 <th>Owner</th>
                 <th>
-                  Reviewer <span className="sec-th-affordance" aria-hidden="true">+</span>
+                  Reviewer{" "}
+                  <button
+                    type="button"
+                    className="sec-th-affordance"
+                    onClick={() => setBatchModal("reviewer")}
+                    disabled={roster.length === 0}
+                    aria-label="Batch assign Reviewer"
+                    title="Batch assign Reviewer"
+                  >
+                    +
+                  </button>
                 </th>
                 <th>Status</th>
               </tr>
@@ -692,7 +749,209 @@ function OverviewPanel({
         </div>
         {otherFooter ? <p className="sec-roster-footer">{otherFooter}</p> : null}
       </section>
+
+      {batchModal === "wave" && (
+        <BatchAssignModal
+          kind="wave"
+          roster={roster}
+          waveOptions={waveSelectOptions}
+          personnel={personnel}
+          onClose={() => setBatchModal(null)}
+          onApply={async (ids, patch) => {
+            await onPatchRosterMany(ids, patch);
+            setBatchModal(null);
+          }}
+        />
+      )}
+      {batchModal === "reviewer" && (
+        <BatchAssignModal
+          kind="reviewer"
+          roster={roster}
+          waveOptions={waveSelectOptions}
+          personnel={personnel}
+          onClose={() => setBatchModal(null)}
+          onApply={async (ids, patch) => {
+            await onPatchRosterMany(ids, patch);
+            setBatchModal(null);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/** AIOSW-style batch assign: pick Wave/Reviewer, multi-select projects, Apply. */
+function BatchAssignModal({
+  kind,
+  roster,
+  waveOptions,
+  personnel,
+  onClose,
+  onApply,
+}: {
+  kind: "wave" | "reviewer";
+  roster: SecurityRosterEntry[];
+  waveOptions: string[];
+  personnel: Profile[];
+  onClose: () => void;
+  onApply: (
+    ids: string[],
+    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+  ) => Promise<void>;
+}) {
+  const [wave, setWave] = useState(waveOptions[0] ?? "Not set");
+  const [reviewerId, setReviewerId] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const allIds = useMemo(() => roster.map((r) => r.id), [roster]);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(allIds));
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (selected.size === 0) {
+      setError("Select at least one project");
+      return;
+    }
+    if (kind === "reviewer" && !reviewerId) {
+      setError("Choose a reviewer");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const ids = [...selected];
+      if (kind === "wave") {
+        await onApply(ids, { wave });
+      } else {
+        await onApply(ids, { reviewer_id: reviewerId });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
+
+  const title = kind === "wave" ? "Batch assign Wave" : "Batch assign Reviewer";
+  const hint =
+    kind === "wave"
+      ? "Choose a wave, select projects, then Apply. Row order stays fixed."
+      : "Choose a reviewer, select projects, then Apply.";
+
+  return (
+    <div className="sec-modal-backdrop" onClick={onClose}>
+      <form
+        className="sec-modal sec-batch-modal"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => void submit(e)}
+      >
+        <div className="sec-modal-head">
+          <div>
+            <h2>{title}</h2>
+            <p>{hint}</p>
+          </div>
+          <button type="button" className="sec-modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        {kind === "wave" ? (
+          <label className="sec-field">
+            <span>Wave</span>
+            <select
+              className="sec-roster-select sec-batch-select"
+              value={wave}
+              onChange={(e) => setWave(e.target.value)}
+              disabled={busy}
+            >
+              {waveOptions.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="sec-field">
+            <span>Reviewer</span>
+            <select
+              className="sec-roster-select sec-batch-select"
+              value={reviewerId}
+              onChange={(e) => setReviewerId(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">Select reviewer…</option>
+              {personnel.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
+                  {p.username ? ` (${p.username})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <div className="sec-projects-picker-head">
+          <span>
+            Projects <strong>{selected.size}</strong> / {roster.length}
+          </span>
+          <button type="button" className="sec-add-wave-link" onClick={toggleAll} disabled={busy}>
+            {allSelected ? "Clear all" : "Select all"}
+          </button>
+        </div>
+        <ul className="sec-project-checklist sec-batch-checklist">
+          {roster.map((row) => (
+            <li key={row.id}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.id)}
+                  onChange={() => toggle(row.id)}
+                  disabled={busy}
+                />
+                <span className="sec-check-name">{row.project_name}</span>
+                <span className="sec-check-blurb">
+                  {kind === "wave"
+                    ? row.wave
+                    : row.reviewer_id
+                      ? personnel.find((p) => p.id === row.reviewer_id)?.display_name ?? "—"
+                      : "—"}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+
+        {error && <p className="sec-error">{error}</p>}
+
+        <div className="sec-modal-actions">
+          <button type="button" className="sec-btn-ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="sec-btn-primary"
+            disabled={busy || selected.size === 0}
+          >
+            {busy ? "Applying…" : `Apply to ${selected.size || "…"}`}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
