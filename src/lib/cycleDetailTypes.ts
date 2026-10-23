@@ -10,6 +10,8 @@ export type ItemApplyCell = {
 
 export type CycleDetailItem = {
   id: string;
+  /** Linked Issue Summary item id when row came from a saved security update item. */
+  issue_id?: string;
   title: string;
   /** Secondary line under title (version / path / note). */
   detail: string;

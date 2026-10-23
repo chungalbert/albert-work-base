@@ -5198,6 +5198,12 @@ button.sec-th-affordance:disabled {
 .sec-mini-pill.tone-amber { color: #fcd34d; border-color: rgba(252,211,77,.35); }
 .sec-mini-pill.tone-sky { color: #7dd3fc; border-color: rgba(125,211,252,.35); }
 .sec-issue-projects { color: var(--sec-teal) !important; }
+.sec-issue-reference dd {
+  color: #6ee7b7 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
 .sec-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -5322,6 +5328,10 @@ button.sec-th-affordance:disabled {
   gap: 8px;
   margin-top: 4px;
 }
+.sec-modal-actions-split {
+  justify-content: space-between;
+  align-items: center;
+}
 .sec-btn-ghost {
   border: 1px solid var(--sec-line);
   background: transparent;
@@ -5340,7 +5350,64 @@ button.sec-th-affordance:disabled {
   cursor: pointer;
 }
 .sec-btn-primary:disabled,
-.sec-btn-ghost:disabled { opacity: 0.6; cursor: wait; }
+.sec-btn-ghost:disabled,
+.sec-btn-danger:disabled { opacity: 0.6; cursor: wait; }
+.sec-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: transparent;
+  color: #f87171;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sec-btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+}
+.sec-btn-save-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sec-select-all-link {
+  border: none;
+  background: none;
+  color: var(--sec-link, #60a5fa);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.sec-select-all-link:hover { text-decoration: underline; }
+.sec-project-checklist-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  max-height: 260px;
+}
+.sec-project-checklist-2col li {
+  border-bottom: 1px solid var(--sec-line);
+}
+.sec-project-checklist-2col label {
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+}
+.sec-project-checklist-2col .sec-check-name {
+  grid-column: 2;
+}
+.sec-project-checklist-2col .sec-check-blurb {
+  grid-column: 2;
+}
+.sec-modal-add-issue,
+.sec-modal-issue {
+  width: min(640px, 100%);
+}
+@media (max-width: 640px) {
+  .sec-project-checklist-2col {
+    grid-template-columns: 1fr;
+  }
+}
 
 @media (max-width: 960px) {
   .sec-cycle-card {
