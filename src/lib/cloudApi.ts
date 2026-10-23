@@ -41,7 +41,7 @@ import type {
   Role,
   Task,
 } from "./types";
-import { normalizeTaskStatus } from "./types";
+import { normalizePersonnelRole, normalizeTaskStatus } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
 function asJsonStringArray(value: unknown): string[] {
@@ -332,10 +332,9 @@ function neonAdminErrorMessage(err: unknown, fallback: string): string {
 async function createAccountsViaNeon(rows: AccountInput[]): Promise<CredentialRow[]> {
   const me = await cloudApi.currentUser();
   if (!me) throw new Error("尚未登入");
-  const canCreate =
-    Boolean(me.is_admin) ||
-    (await cloudApi.listAllMembers()).some((m) => m.user_id === me.id && m.role === "leader");
-  if (!canCreate) throw new Error("只有專案領導或管理員可以開通帳號");
+  if (normalizePersonnelRole(me) !== "Admin") {
+    throw new Error("只有 Admin 可以新增 Member");
+  }
 
   const betterAuth = neonBetterAuth();
   const existingProfiles = await cloudApi.listProfiles();
@@ -468,30 +467,8 @@ export const cloudApi = {
     return data as Profile | null;
   },
 
-  async bootstrapAdmin(username: string, password: string, email: string) {
-    const client = sb();
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username,
-          display_name: username,
-          unit: "工作基地",
-        },
-      },
-    });
-    if (error) throw new Error(error.message);
-    if (!data.session) {
-      const signedIn = await client.auth.signInWithPassword({ email, password });
-      if (signedIn.error) throw new Error(signedIn.error.message);
-    }
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const profile = await ensureOwnProfile();
-      if (profile) return profile;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    throw new Error("帳號已建立，請再用同一個帳號或 EMAIL 登入。");
+  async bootstrapAdmin(_username: string, _password: string, _email: string): Promise<Profile> {
+    throw new Error("Public Create admin is disabled. Ask an Admin to Add Member in Personnel.");
   },
 
   async listProfiles(): Promise<Profile[]> {

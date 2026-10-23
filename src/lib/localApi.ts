@@ -322,6 +322,10 @@ export const localApi = {
   async createPersonnelMember(input: CreatePersonnelInput): Promise<Profile> {
     const store = load();
     if (!store.sessionUserId) throw new Error("尚未登入");
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
+    if (!me || normalizePersonnelRole(me) !== "Admin") {
+      throw new Error("只有 Admin 可以新增 Member");
+    }
 
     const display_name = input.display_name.trim();
     if (!display_name) throw new Error("姓名不能空白");
@@ -532,10 +536,9 @@ export const localApi = {
     const store = load();
     if (!store.sessionUserId) throw new Error("尚未登入");
     const me = store.profiles.find((p) => p.id === store.sessionUserId);
-    const canCreate =
-      Boolean(me?.is_admin) ||
-      store.members.some((m) => m.user_id === store.sessionUserId && m.role === "leader");
-    if (!canCreate) throw new Error("只有專案領導或管理員可以開通帳號");
+    if (!me || normalizePersonnelRole(me) !== "Admin") {
+      throw new Error("只有 Admin 可以新增 Member");
+    }
 
     const creds: CredentialRow[] = [];
     const taken = new Set(store.profiles.map((p) => p.username.toLowerCase()));
@@ -677,6 +680,7 @@ export const localApi = {
   async inviteMembers(rows: InviteInput[]): Promise<CredentialRow[]> {
     const store = load();
     if (!store.sessionUserId) throw new Error("尚未登入");
+    const me = store.profiles.find((p) => p.id === store.sessionUserId);
     const creds: CredentialRow[] = [];
     const taken = new Set(store.profiles.map((p) => p.username.toLowerCase()));
 
@@ -693,6 +697,9 @@ export const localApi = {
       let username = profile?.username ?? "";
 
       if (!profile) {
+        if (!me || normalizePersonnelRole(me) !== "Admin") {
+          throw new Error("只有 Admin 可以新增 Member");
+        }
         username = usernameFromEmail(email, taken);
         taken.add(username);
         password = DEFAULT_PASSWORD;
