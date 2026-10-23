@@ -361,6 +361,20 @@ a:hover { text-decoration: underline; }
 
 .sidebar-link:hover { color: #fff; }
 
+/* Quiet author + version under Change password — does not compete with nav/profile. */
+.sidebar-credit {
+  margin: 2px 0 0;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--sidebar-muted);
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
 .shell-main {
   flex: 1;
   min-width: 0;
