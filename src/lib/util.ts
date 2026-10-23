@@ -33,6 +33,10 @@ export const DEFAULT_PASSWORD = "abcd1234";
 /** App version: `1.<latest merged feature PR#>`. Bump when that PR lands. */
 export const APP_VERSION = "1.96";
 
+/**
+ * Author + version label for landing footer and logged-in sidebar credit.
+ * Format: `KSSW_Albert 1.<PR#>` (brand + author Albert + APP_VERSION).
+ */
 export const LANDING_FOOTER_LABEL = `KSSW_Albert ${APP_VERSION}`;
 
 export function randomPassword(): string {

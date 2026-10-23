@@ -26,6 +26,7 @@ import {
 } from "./lib/types";
 import { ALL_PROJECTS_ID } from "./lib/projects";
 import { roleLabel } from "./lib/roles";
+import { LANDING_FOOTER_LABEL } from "./lib/util";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
 
@@ -332,6 +333,9 @@ function Shell() {
               <button type="button" className="sidebar-link" onClick={() => setShowPassword(true)}>
                 Change password
               </button>
+              <p className="sidebar-credit" title={LANDING_FOOTER_LABEL}>
+                {LANDING_FOOTER_LABEL}
+              </p>
             </div>
           </>
         )}
