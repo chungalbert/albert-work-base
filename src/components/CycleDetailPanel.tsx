@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   CycleDetailDoc,
   CycleDetailItem,
   CycleReleaseTracking,
+  ItemApplyCell,
   ItemApplyStatus,
   ReleaseTrackingKey,
 } from "../lib/cycleDetailTypes";
@@ -10,8 +11,10 @@ import {
   APPLY_STATUSES,
   RELEASE_STATUS_OPTIONS,
   RELEASE_TRACKING_ROWS,
-  itemsSignature,
+  detailDocSignature,
+  emptyApplyCell,
   newDetailItemId,
+  normalizeApplyCell,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
@@ -24,13 +27,13 @@ type ProjectCol = {
   blurb: string;
 };
 
-function nextApply(cur: ItemApplyStatus): ItemApplyStatus {
-  const i = APPLY_STATUSES.indexOf(cur);
-  return APPLY_STATUSES[(i + 1) % APPLY_STATUSES.length] ?? "";
-}
-
 function cloneItems(items: CycleDetailItem[]): CycleDetailItem[] {
-  return items.map((it) => ({ ...it, applies: { ...it.applies } }));
+  return items.map((it) => ({
+    ...it,
+    applies: Object.fromEntries(
+      Object.entries(it.applies).map(([pid, cell]) => [pid, { ...normalizeApplyCell(cell) }]),
+    ),
+  }));
 }
 
 function cloneRelease(release: CycleReleaseTracking): CycleReleaseTracking {
@@ -38,6 +41,15 @@ function cloneRelease(release: CycleReleaseTracking): CycleReleaseTracking {
     by_project: Object.fromEntries(
       Object.entries(release.by_project).map(([pid, cell]) => [pid, { ...cell }]),
     ),
+  };
+}
+
+function cloneDoc(doc: CycleDetailDoc): CycleDetailDoc {
+  return {
+    cycle_id: doc.cycle_id,
+    items: cloneItems(doc.items),
+    release: cloneRelease(doc.release),
+    updated_at: doc.updated_at,
   };
 }
 
@@ -56,6 +68,13 @@ function toDateInputValue(raw: string): string {
   return s;
 }
 
+function statusClass(status: ItemApplyStatus): string {
+  if (status === "Applied") return "is-applied";
+  if (status === "Not Applied") return "is-not-applied";
+  if (status === "Not Applicable") return "is-na";
+  return "is-empty";
+}
+
 export function CycleDetailPanel({
   cycle,
   roster,
@@ -65,8 +84,7 @@ export function CycleDetailPanel({
   busy,
   onBack,
   onEditCycle,
-  onSaveItems,
-  onAutoSaveRelease,
+  onSave,
 }: {
   cycle: SecurityCycle;
   roster: SecurityRosterEntry[];
@@ -77,10 +95,8 @@ export function CycleDetailPanel({
   busy: boolean;
   onBack: () => void;
   onEditCycle: () => void;
-  /** Persist security-update items (Save All). Includes current release snapshot. */
-  onSaveItems: (doc: CycleDetailDoc) => Promise<void>;
-  /** Persist release tracking immediately on each cell change. */
-  onAutoSaveRelease: (release: CycleReleaseTracking) => Promise<void>;
+  /** Persist full draft (items + release) on Save All. */
+  onSave: (doc: CycleDetailDoc) => Promise<void>;
 }) {
   const projectCols: ProjectCol[] = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p]));
@@ -103,136 +119,112 @@ export function CycleDetailPanel({
 
   const projectIds = useMemo(() => projectCols.map((p) => p.id), [projectCols]);
 
-  const initial = useMemo(() => {
-    // Persist may have release-only rows (autosave) with empty items — still seed items locally.
-    const items =
-      saved && saved.items.length > 0
-        ? cloneItems(saved.items)
-        : cloneItems(seedDetailFromIssues(cycle.id, issues, projectIds).items);
-    const release = saved
-      ? cloneRelease(saved.release)
-      : { by_project: {} as CycleReleaseTracking["by_project"] };
-    return { items, release };
+  const initialDoc = useMemo(() => {
+    if (saved && (saved.items.length > 0 || Object.keys(saved.release.by_project).length > 0)) {
+      // Prefer persisted items; seed only when items empty but release exists.
+      if (saved.items.length > 0) return cloneDoc(saved);
+      const seeded = seedDetailFromIssues(cycle.id, issues, projectIds);
+      return {
+        cycle_id: cycle.id,
+        items: cloneItems(seeded.items),
+        release: cloneRelease(saved.release),
+        updated_at: saved.updated_at,
+      };
+    }
+    if (saved) return cloneDoc(saved);
+    return seedDetailFromIssues(cycle.id, issues, projectIds);
   }, [saved, cycle.id, issues, projectIds]);
 
-  const [itemsBaseline, setItemsBaseline] = useState(() => itemsSignature(initial.items));
-  const [items, setItems] = useState(() => cloneItems(initial.items));
-  const [release, setRelease] = useState(() => cloneRelease(initial.release));
+  const [baseline, setBaseline] = useState(() => detailDocSignature(initialDoc));
+  const [draft, setDraft] = useState(() => cloneDoc(initialDoc));
   const [releaseOpen, setReleaseOpen] = useState(true);
   const [error, setError] = useState("");
-  const [releaseSaving, setReleaseSaving] = useState(false);
-  const releaseSaveGen = useRef(0);
 
-  // Reset items when cycle changes or persisted *items* change (Save All).
-  // Release-only autosaves update `saved` but keep the same items signature — do not clobber draft.
-  const savedItemsSig =
-    saved && saved.items.length > 0 ? itemsSignature(saved.items) : `seed:${cycle.id}`;
-  const cycleKey = cycle.id;
-  const prevItemsSig = useRef(savedItemsSig);
-  const prevCycle = useRef(cycleKey);
   useEffect(() => {
-    const cycleChanged = prevCycle.current !== cycleKey;
-    const itemsChanged = prevItemsSig.current !== savedItemsSig;
-    prevCycle.current = cycleKey;
-    prevItemsSig.current = savedItemsSig;
-    if (!cycleChanged && !itemsChanged) {
-      // Release autosave only — sync release from server, keep item draft.
-      setRelease(cloneRelease(initial.release));
-      return;
-    }
-    setItems(cloneItems(initial.items));
-    setItemsBaseline(itemsSignature(initial.items));
-    setRelease(cloneRelease(initial.release));
+    setDraft(cloneDoc(initialDoc));
+    setBaseline(detailDocSignature(initialDoc));
     setError("");
-  }, [cycleKey, savedItemsSig, initial]);
+  }, [initialDoc]);
 
-  const itemsDirty = itemsSignature(items) !== itemsBaseline;
+  const dirty = detailDocSignature(draft) !== baseline;
 
   const updateItem = useCallback((id: string, patch: Partial<CycleDetailItem>) => {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+    setDraft((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    }));
   }, []);
 
-  const setApply = useCallback((itemId: string, projectId: string, status: ItemApplyStatus) => {
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === itemId ? { ...it, applies: { ...it.applies, [projectId]: status } } : it,
-      ),
-    );
-  }, []);
+  const patchApplyCell = useCallback(
+    (itemId: string, projectId: string, patch: Partial<ItemApplyCell>) => {
+      setDraft((prev) => ({
+        ...prev,
+        items: prev.items.map((it) => {
+          if (it.id !== itemId) return it;
+          const cur = normalizeApplyCell(it.applies[projectId] ?? emptyApplyCell());
+          return {
+            ...it,
+            applies: { ...it.applies, [projectId]: { ...cur, ...patch } },
+          };
+        }),
+      }));
+    },
+    [],
+  );
 
   const addItem = () => {
-    setItems((prev) => {
-      const applies: Record<string, ItemApplyStatus> = {};
-      for (const pid of projectIds) applies[pid] = "";
+    setDraft((prev) => {
+      const applies: Record<string, ItemApplyCell> = {};
+      for (const pid of projectIds) applies[pid] = emptyApplyCell();
       const item: CycleDetailItem = {
         id: newDetailItemId(),
         title: "New security item",
         detail: "",
         cycle_comment: "",
         applies,
-        sort_order: prev.length,
+        sort_order: prev.items.length,
       };
-      return [...prev, item];
+      return { ...prev, items: [...prev.items, item] };
     });
   };
 
   const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id).map((it, i) => ({ ...it, sort_order: i })));
+    setDraft((prev) => ({
+      ...prev,
+      items: prev.items.filter((it) => it.id !== id).map((it, i) => ({ ...it, sort_order: i })),
+    }));
   };
 
-  const persistRelease = useCallback(
-    async (next: CycleReleaseTracking) => {
-      const gen = ++releaseSaveGen.current;
-      setReleaseSaving(true);
-      setError("");
-      try {
-        await onAutoSaveRelease(next);
-      } catch (err) {
-        if (gen === releaseSaveGen.current) {
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      } finally {
-        if (gen === releaseSaveGen.current) setReleaseSaving(false);
-      }
-    },
-    [onAutoSaveRelease],
-  );
-
   const setReleaseCell = (projectId: string, key: ReleaseTrackingKey, value: string) => {
-    setRelease((prev) => {
-      const cell = { ...(prev.by_project[projectId] ?? {}), [key]: value };
-      const next: CycleReleaseTracking = {
-        by_project: { ...prev.by_project, [projectId]: cell },
+    setDraft((prev) => {
+      const cell = { ...(prev.release.by_project[projectId] ?? {}), [key]: value };
+      return {
+        ...prev,
+        release: {
+          by_project: { ...prev.release.by_project, [projectId]: cell },
+        },
       };
-      void persistRelease(next);
-      return next;
     });
   };
 
-  const handleSaveItems = async () => {
+  const handleSave = async () => {
     setError("");
     try {
-      const doc: CycleDetailDoc = {
-        cycle_id: cycle.id,
-        items: cloneItems(items),
-        release: cloneRelease(release),
-        updated_at: new Date().toISOString(),
-      };
-      await onSaveItems(doc);
-      setItemsBaseline(itemsSignature(items));
+      await onSave(draft);
+      setBaseline(detailDocSignature(draft));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
 
   const handleBack = () => {
-    if (itemsDirty && !window.confirm("Discard unsaved security item changes?")) return;
+    if (dirty && !window.confirm("Discard unsaved cycle detail changes?")) return;
     onBack();
   };
 
   const sortedItems = useMemo(
-    () => items.slice().sort((a, b) => a.sort_order - b.sort_order),
-    [items],
+    () => draft.items.slice().sort((a, b) => a.sort_order - b.sort_order),
+    [draft.items],
   );
 
   const colCount = 2 + projectCols.length;
@@ -265,25 +257,23 @@ export function CycleDetailPanel({
           <p className="sec-detail-sub">Security update review and project release tracking.</p>
         </div>
         <div className="sec-detail-actions">
-          {itemsDirty && <span className="sec-detail-dirty">Unsaved items</span>}
-          {releaseSaving && <span className="sec-detail-autosave">Saving release…</span>}
+          {dirty && <span className="sec-detail-dirty">Unsaved draft</span>}
           <button
             type="button"
-            className="sec-new-item"
+            className="sec-btn-ghost sec-toolbar-action"
             onClick={addItem}
             disabled={busy}
           >
-            <span className="sec-new-item-plus" aria-hidden="true">
+            <span className="sec-toolbar-action-icon" aria-hidden="true">
               +
             </span>
-            <span>New item</span>
+            New item
           </button>
           <button
             type="button"
-            className="sec-btn-ghost sec-save-all"
-            onClick={() => void handleSaveItems()}
-            disabled={busy || !itemsDirty}
-            title="Save security update items"
+            className="sec-btn-ghost sec-toolbar-action"
+            onClick={() => void handleSave()}
+            disabled={busy || !dirty}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -378,19 +368,40 @@ export function CycleDetailPanel({
                     />
                   </td>
                   {projectCols.map((p) => {
-                    const status = item.applies[p.id] ?? "";
+                    const cell = normalizeApplyCell(item.applies[p.id] ?? emptyApplyCell());
                     return (
-                      <td key={p.id} className="sec-detail-proj-col">
-                        <button
-                          type="button"
-                          className={`sec-apply-btn${status === "Applied" ? " is-applied" : ""}${
-                            status === "Not Applied" ? " is-not-applied" : ""
-                          }${!status ? " is-empty" : ""}`}
-                          onClick={() => setApply(item.id, p.id, nextApply(status))}
-                          aria-label={`${item.title || "Item"} · ${p.name}: ${status || "unset"}`}
-                        >
-                          {status || "—"}
-                        </button>
+                      <td
+                        key={p.id}
+                        className={`sec-detail-proj-col sec-apply-cell ${statusClass(cell.status)}`}
+                      >
+                        <div className="sec-apply-stack">
+                          <select
+                            className={`sec-apply-select ${statusClass(cell.status)}`}
+                            value={cell.status}
+                            onChange={(e) =>
+                              patchApplyCell(item.id, p.id, {
+                                status: e.target.value as ItemApplyStatus,
+                              })
+                            }
+                            aria-label={`${item.title || "Item"} · ${p.name} status`}
+                          >
+                            {APPLY_STATUSES.map((s) => (
+                              <option key={s || "empty"} value={s}>
+                                {s || "—"}
+                              </option>
+                            ))}
+                          </select>
+                          <textarea
+                            className="sec-apply-comment"
+                            value={cell.comment}
+                            onChange={(e) =>
+                              patchApplyCell(item.id, p.id, { comment: e.target.value })
+                            }
+                            placeholder="Comment / implementation details"
+                            rows={2}
+                            aria-label={`${item.title || "Item"} · ${p.name} comment`}
+                          />
+                        </div>
                       </td>
                     );
                   })}
@@ -407,7 +418,6 @@ export function CycleDetailPanel({
                   onClick={() => setReleaseOpen((o) => !o)}
                 >
                   <span aria-hidden="true">{releaseOpen ? "∨" : "›"}</span> Project Release Tracking
-                  <span className="sec-release-hint">auto-saves</span>
                 </button>
               </td>
             </tr>
@@ -425,7 +435,7 @@ export function CycleDetailPanel({
                     {row.label}
                   </td>
                   {projectCols.map((p) => {
-                    const value = release.by_project[p.id]?.[row.key] ?? "";
+                    const value = draft.release.by_project[p.id]?.[row.key] ?? "";
                     if (row.kind === "status") {
                       return (
                         <td key={p.id} className="sec-detail-proj-col">

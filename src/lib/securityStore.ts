@@ -8,11 +8,12 @@ import { cloudApi } from "./cloudApi";
 import type {
   CycleDetailDoc,
   CycleDetailItem,
-  ItemApplyStatus,
+  ItemApplyCell,
 } from "./cycleDetailTypes";
 import {
   emptyCycleDetail,
   newDetailItemId,
+  normalizeApplyCell,
 } from "./cycleDetailTypes";
 import type {
   NewCycleInput,
@@ -81,12 +82,6 @@ function saveLocalDetails(map: Record<string, CycleDetailDoc>) {
   localStorage.setItem(DETAIL_KEY, JSON.stringify(map));
 }
 
-function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
-  const s = String(raw ?? "");
-  if (s === "Applied" || s === "Not Applied") return s;
-  return "";
-}
-
 function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null | undefined): CycleDetailDoc {
   const base = emptyCycleDetail(cycleId);
   if (!raw) return base;
@@ -96,9 +91,9 @@ function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null
           item && typeof item === "object" && item.applies && typeof item.applies === "object"
             ? (item.applies as Record<string, unknown>)
             : {};
-        const applies: Record<string, ItemApplyStatus> = {};
+        const applies: Record<string, ItemApplyCell> = {};
         for (const [pid, v] of Object.entries(appliesRaw)) {
-          applies[pid] = normalizeApplyStatus(v);
+          applies[pid] = normalizeApplyCell(v);
         }
         return {
           id: String(item?.id || newDetailItemId()),
@@ -133,9 +128,12 @@ export function seedDetailFromIssues(
     .slice()
     .sort((a, b) => a.title.localeCompare(b.title));
   const items: CycleDetailItem[] = linked.map((issue, i) => {
-    const applies: Record<string, ItemApplyStatus> = {};
+    const applies: Record<string, ItemApplyCell> = {};
     for (const pid of projectIds) {
-      applies[pid] = issue.project_ids.includes(pid) ? "Applied" : "";
+      applies[pid] = {
+        status: issue.project_ids.includes(pid) ? "Applied" : "",
+        comment: "",
+      };
     }
     return {
       id: newDetailItemId(),
