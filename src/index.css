@@ -5572,17 +5572,111 @@ button.sec-th-affordance:disabled {
   text-align: center;
   text-transform: none;
   letter-spacing: 0;
+  position: relative;
+}
+.sec-detail-proj-title-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
 }
 .sec-detail-proj-head strong {
   color: var(--sec-text);
   font-size: 13px;
   font-weight: 700;
 }
+.sec-proj-info-btn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  background: var(--sec-link);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1;
+  cursor: pointer;
+}
+.sec-proj-info-btn:hover {
+  filter: brightness(1.12);
+}
+.sec-proj-info-btn[aria-expanded="true"] {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.45);
+}
+.sec-proj-info-card {
+  position: fixed;
+  z-index: 80;
+  width: 220px;
+  padding: 12px 12px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--sec-line);
+  background: #1c1f24;
+  color: var(--sec-text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sec-proj-info-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--sec-line);
+}
+.sec-proj-info-title strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sec-text);
+}
+.sec-proj-info-platform {
+  font-size: 11px;
+  color: var(--sec-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sec-proj-info-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sec-proj-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.sec-proj-info-row dt {
+  margin: 0;
+  color: var(--sec-muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.sec-proj-info-row dd {
+  margin: 0;
+  color: var(--sec-text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
 .sec-detail-proj-blurb {
   color: var(--sec-muted);
   font-size: 10px;
   font-weight: 400;
-  max-width: 110px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

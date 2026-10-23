@@ -19,12 +19,20 @@ import {
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
 import type { Project } from "../lib/types";
+import {
+  ProjectInfoPopover,
+  formatMpEop,
+  resolveSegment,
+  type ProjectInfoData,
+} from "./ProjectInfoPopover";
 
 type ProjectCol = {
   id: string;
   name: string;
   lenovo_name: string;
+  platform: string;
   blurb: string;
+  info: ProjectInfoData;
 };
 
 function cloneItems(items: CycleDetailItem[]): CycleDetailItem[] {
@@ -82,6 +90,7 @@ export function CycleDetailPanel({
   issues,
   saved,
   busy,
+  profileName,
   onBack,
   onEditCycle,
   onSave,
@@ -93,11 +102,15 @@ export function CycleDetailPanel({
   /** Persisted doc (null → seed items from issues on first paint). */
   saved: CycleDetailDoc | null;
   busy: boolean;
+  profileName: (id: string | null) => string | null;
   onBack: () => void;
   onEditCycle: () => void;
   /** Persist full draft (items + release) on Save All. */
   onSave: (doc: CycleDetailDoc) => Promise<void>;
 }) {
+  const [infoOpenId, setInfoOpenId] = useState<string | null>(null);
+  const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null);
+
   const projectCols: ProjectCol[] = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p]));
     const byName = new Map(projects.map((p) => [p.name, p]));
@@ -112,10 +125,20 @@ export function CycleDetailPanel({
         id: r.project_id,
         name: r.project_name,
         lenovo_name: (linked?.lenovo_name ?? "").trim(),
+        platform,
         blurb: waveBlurb || platform || (linked?.description ?? "").trim().slice(0, 48),
+        info: {
+          name: r.project_name,
+          platform: platform || (linked?.description ?? "").trim().slice(0, 48),
+          mpEop: formatMpEop(linked?.ss_date, linked?.eol_date),
+          segment: linked ? resolveSegment(linked) : "—",
+          wave: r.wave && r.wave !== "Not set" ? r.wave : "—",
+          owner: profileName(r.owner_id) ?? "—",
+          reviewer: profileName(r.reviewer_id) ?? "—",
+        },
       };
     });
-  }, [roster, projects]);
+  }, [roster, projects, profileName]);
 
   const projectIds = useMemo(() => projectCols.map((p) => p.id), [projectCols]);
 
@@ -287,6 +310,26 @@ export function CycleDetailPanel({
 
       {error && <p className="sec-error">{error}</p>}
 
+      {infoOpenId ? (
+        <ProjectInfoPopover
+          open
+          data={projectCols.find((c) => c.id === infoOpenId)?.info ?? {
+            name: "—",
+            platform: "",
+            mpEop: "—",
+            segment: "—",
+            wave: "—",
+            owner: "—",
+            reviewer: "—",
+          }}
+          onClose={() => {
+            setInfoOpenId(null);
+            setInfoAnchor(null);
+          }}
+          anchorEl={infoAnchor}
+        />
+      ) : null}
+
       <div className="sec-detail-matrix-wrap">
         <table className="sec-detail-matrix sec-detail-unified">
           <colgroup>
@@ -303,8 +346,37 @@ export function CycleDetailPanel({
               {projectCols.map((p) => (
                 <th key={p.id} className="sec-detail-proj-col">
                   <div className="sec-detail-proj-head">
-                    <strong>{p.name}</strong>
-                    {p.blurb ? <span className="sec-detail-proj-blurb">{p.blurb}</span> : null}
+                    <div className="sec-detail-proj-title-row">
+                      <strong>{p.name}</strong>
+                      <button
+                        type="button"
+                        className="sec-proj-info-btn"
+                        aria-label={`${p.name} project info`}
+                        aria-expanded={infoOpenId === p.id}
+                        title="Project info"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          setInfoOpenId((cur) => {
+                            if (cur === p.id) {
+                              setInfoAnchor(null);
+                              return null;
+                            }
+                            setInfoAnchor(btn);
+                            return p.id;
+                          });
+                        }}
+                      >
+                        i
+                      </button>
+                    </div>
+                    {p.platform ? (
+                      <span className="sec-detail-proj-blurb" title={p.platform}>
+                        {p.platform}
+                      </span>
+                    ) : p.blurb ? (
+                      <span className="sec-detail-proj-blurb">{p.blurb}</span>
+                    ) : null}
                     {p.lenovo_name ? (
                       <span className="sec-detail-proj-lenovo" title="Lenovo Project Name">
                         {p.lenovo_name}

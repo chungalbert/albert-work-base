@@ -374,6 +374,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               issues={snap?.issues ?? []}
               saved={detailDoc}
               busy={saveStatus.kind === "saving"}
+              profileName={profileName}
               onBack={closeCycleDetail}
               onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
               onSave={async (doc) => {
