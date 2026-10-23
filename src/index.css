@@ -2411,8 +2411,16 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   font: inherit;
 }
 
+.pi-cell-select {
+  min-width: 140px;
+  cursor: pointer;
+  appearance: auto;
+}
+
 .pi-cell-input:hover,
-.pi-cell-input:focus {
+.pi-cell-input:focus,
+.pi-cell-select:hover,
+.pi-cell-select:focus {
   outline: none;
   border-color: #5a8dee;
   background: #1f2023;

@@ -57,12 +57,24 @@ export const PROJECT_STANDARD_COLUMNS = [
   },
   {
     key: "owner",
-    label: "OWNER",
+    /** Display header; Neon field remains `projects.owner`. */
+    label: "PROJECT LEADER",
     id: "00000000-0000-4000-8000-0000000000d9",
   },
 ] as const;
 
 export type ProjectStandardKey = (typeof PROJECT_STANDARD_COLUMNS)[number]["key"];
+
+/**
+ * Labels that map to the standard `owner` / Project Leader column
+ * (legacy UI used OWNER; users also say Project Leader).
+ */
+const PROJECT_LEADER_LABEL_ALIASES = new Set([
+  "OWNER",
+  "PROJECT LEADER",
+  "PROJECT_LEADER",
+  "PROJECTLEADER",
+]);
 
 /** @deprecated Prefer PROJECT_LOCKED_COLUMN + PROJECT_STANDARD_COLUMNS; kept for callers that list all field keys. */
 export const PROJECT_BUILTIN_COLUMNS = [
@@ -86,12 +98,19 @@ export function isReservedProjectColumnLabel(label: string): boolean {
   return RESERVED_HEADER_LABELS.has(normalizeLabel(label));
 }
 
+export function isProjectLeaderColumnLabel(label: string): boolean {
+  return PROJECT_LEADER_LABEL_ALIASES.has(normalizeLabel(label));
+}
+
 export function findStandardProjectColumn(
   labelOrId: string,
 ): (typeof PROJECT_STANDARD_COLUMNS)[number] | undefined {
   const trimmed = labelOrId.trim();
   if (!trimmed) return undefined;
   const upper = normalizeLabel(trimmed);
+  if (PROJECT_LEADER_LABEL_ALIASES.has(upper) || trimmed === "owner") {
+    return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "owner");
+  }
   return PROJECT_STANDARD_COLUMNS.find(
     (col) => col.id === trimmed || col.key === trimmed || normalizeLabel(col.label) === upper,
   );
@@ -193,11 +212,12 @@ export function seedStandardProjectColumns(
   const claimed = new Set<string>();
 
   for (const std of PROJECT_STANDARD_COLUMNS) {
-    const existing = columns.find(
-      (c) =>
-        !claimed.has(c.id) &&
-        (c.id === std.id || c.id === std.key || normalizeLabel(c.label) === normalizeLabel(std.label)),
-    );
+    const existing = columns.find((c) => {
+      if (claimed.has(c.id)) return false;
+      if (c.id === std.id || c.id === std.key) return true;
+      const matched = findStandardProjectColumn(c.label) ?? findStandardProjectColumn(c.id);
+      return matched?.key === std.key;
+    });
     if (existing) {
       claimed.add(existing.id);
       if (existing.id !== std.id || existing.label !== std.label) {
@@ -231,8 +251,8 @@ export function seedStandardProjectColumns(
 
 /**
  * Drop custom columns whose labels collide with locked headers (COMPAL / ACTIONS).
- * Migrate OWNER cell values into the builtin `owner` overlay field when a legacy
- * custom OWNER column is rewritten to the standard id during seed.
+ * Migrate OWNER / Project Leader cell values into the builtin `owner` overlay field
+ * when a legacy custom column is rewritten to the standard id during seed.
  */
 function scrubLockedCustomColumns(state: ProjectsUiState): boolean {
   const locked = state.columns.filter((c) => isReservedProjectColumnLabel(c.label));
@@ -255,26 +275,29 @@ function scrubLockedCustomColumns(state: ProjectsUiState): boolean {
 
 function migrateOwnerCustomIntoField(state: ProjectsUiState): boolean {
   let changed = false;
+  const std = findStandardProjectColumn("owner");
+  if (!std) return false;
   for (const col of state.columns) {
-    if (normalizeLabel(col.label) !== "OWNER") continue;
-    const std = findStandardProjectColumn("OWNER");
-    if (!std || col.id === std.id) continue;
+    if (!isProjectLeaderColumnLabel(col.label) && col.id !== std.id) continue;
+    if (col.id === std.id && normalizeLabel(col.label) === normalizeLabel(std.label)) continue;
     for (const overlay of Object.values(state.overlays)) {
       const fromCustom = overlay.custom?.[col.id];
       if (fromCustom != null && fromCustom !== "" && (overlay.owner == null || overlay.owner === "")) {
         overlay.owner = fromCustom;
         changed = true;
       }
-      if (overlay.custom && col.id in overlay.custom) {
+      if (overlay.custom && col.id in overlay.custom && col.id !== std.id) {
         const next = { ...overlay.custom };
         delete next[col.id];
         overlay.custom = next;
         changed = true;
       }
     }
-    col.id = std.id;
-    col.label = std.label;
-    changed = true;
+    if (col.id !== std.id || normalizeLabel(col.label) !== normalizeLabel(std.label)) {
+      col.id = std.id;
+      col.label = std.label;
+      changed = true;
+    }
   }
   return changed;
 }

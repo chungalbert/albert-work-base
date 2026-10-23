@@ -210,6 +210,27 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
 
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "Unassigned";
 
+  /** Resolve owner cell → Personnel option value (prefer display_name; keep orphans selectable). */
+  const ownerSelectValue = (raw: string | undefined): string => {
+    const value = (raw ?? "").trim();
+    if (!value) return "";
+    const byDisplay = profiles.find(
+      (p) => p.display_name.trim().toLowerCase() === value.toLowerCase(),
+    );
+    if (byDisplay) return byDisplay.display_name;
+    const byUsername = profiles.find(
+      (p) => (p.username ?? "").trim().toLowerCase() === value.toLowerCase(),
+    );
+    if (byUsername) return byUsername.display_name;
+    return value;
+  };
+
+  const personnelOwnerOptions = useMemo(() => {
+    return [...profiles].sort((a, b) =>
+      a.display_name.localeCompare(b.display_name, undefined, { sensitivity: "base" }),
+    );
+  }, [profiles]);
+
   const projectRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return projects.filter((p) => {
@@ -878,6 +899,40 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                         if (stdKey) {
                           const value = standardFieldValue(draft, stdKey);
                           const isDate = stdKey === "ss_date" || stdKey === "eol_date";
+                          if (stdKey === "owner") {
+                            const selected = ownerSelectValue(value);
+                            const orphan =
+                              selected !== "" &&
+                              !personnelOwnerOptions.some(
+                                (p) => p.display_name === selected,
+                              );
+                            return (
+                              <td key={col.id}>
+                                {canEditFields ? (
+                                  <select
+                                    className="pi-cell-input pi-cell-select"
+                                    value={selected}
+                                    disabled={busy}
+                                    aria-label="Project Leader"
+                                    onChange={(e) =>
+                                      setDraftField(project.id, { owner: e.target.value })
+                                    }
+                                  >
+                                    <option value="">—</option>
+                                    {orphan && <option value={selected}>{selected}</option>}
+                                    {personnelOwnerOptions.map((p) => (
+                                      <option key={p.id} value={p.display_name}>
+                                        {p.display_name}
+                                        {p.username ? ` (${p.username})` : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="pi-cell-text">{value || "—"}</span>
+                                )}
+                              </td>
+                            );
+                          }
                           return (
                             <td key={col.id}>
                               {canEditFields ? (
