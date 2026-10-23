@@ -15,9 +15,9 @@ export type CycleDetailItem = {
 
 /** Release tracking row keys — labels in UI. */
 export const RELEASE_TRACKING_ROWS = [
-  { key: "pcr_request_date", label: "PCR Request Date", kind: "text" },
-  { key: "ec_release_date", label: "EC Release Date", kind: "text" },
-  { key: "bios_release_date", label: "BIOS Release Date", kind: "text" },
+  { key: "pcr_request_date", label: "PCR Request Date", kind: "date" },
+  { key: "ec_release_date", label: "EC Release Date", kind: "date" },
+  { key: "bios_release_date", label: "BIOS Release Date", kind: "date" },
   { key: "bios_version", label: "BIOS Version", kind: "text" },
   { key: "release_comment", label: "Release Comment", kind: "text" },
   { key: "internal_release", label: "Internal Release", kind: "status" },
@@ -58,4 +58,12 @@ export function emptyCycleDetail(cycleId: string): CycleDetailDoc {
 
 export function newDetailItemId(): string {
   return `cdi-${crypto.randomUUID()}`;
+}
+
+export function itemsSignature(items: CycleDetailItem[]): string {
+  return JSON.stringify(items);
+}
+
+export function releaseSignature(release: CycleReleaseTracking): string {
+  return JSON.stringify(release);
 }
