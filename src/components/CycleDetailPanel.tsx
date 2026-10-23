@@ -15,6 +15,7 @@ import {
   emptyApplyCell,
   newDetailItemId,
   normalizeApplyCell,
+  normalizeEcrHref,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
@@ -162,10 +163,13 @@ export function CycleDetailPanel({
   const [draft, setDraft] = useState(() => cloneDoc(initialDoc));
   const [releaseOpen, setReleaseOpen] = useState(true);
   const [error, setError] = useState("");
+  /** Project ids whose ECR Number cell is in edit mode (two inputs). */
+  const [ecrEditing, setEcrEditing] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setDraft(cloneDoc(initialDoc));
     setBaseline(detailDocSignature(initialDoc));
+    setEcrEditing(new Set());
     setError("");
   }, [initialDoc]);
 
@@ -230,11 +234,24 @@ export function CycleDetailPanel({
     });
   };
 
+  const setEcrUrl = (projectId: string, url: string) => {
+    setDraft((prev) => {
+      const cell = { ...(prev.release.by_project[projectId] ?? {}), ecr_url: url };
+      return {
+        ...prev,
+        release: {
+          by_project: { ...prev.release.by_project, [projectId]: cell },
+        },
+      };
+    });
+  };
+
   const handleSave = async () => {
     setError("");
     try {
       await onSave(draft);
       setBaseline(detailDocSignature(draft));
+      setEcrEditing(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -516,7 +533,79 @@ export function CycleDetailPanel({
                     {row.label}
                   </td>
                   {projectCols.map((p) => {
-                    const value = draft.release.by_project[p.id]?.[row.key] ?? "";
+                    const cell = draft.release.by_project[p.id] ?? {};
+                    const value = cell[row.key] ?? "";
+                    if (row.kind === "ecr") {
+                      const number = (cell.ecr_number ?? "").trim();
+                      const url = (cell.ecr_url ?? "").trim();
+                      const editing = ecrEditing.has(p.id) || !number;
+                      if (!editing) {
+                        const href = normalizeEcrHref(url);
+                        return (
+                          <td key={p.id} className="sec-detail-proj-col">
+                            <div className="sec-ecr-view">
+                              {href ? (
+                                <a
+                                  className="sec-ecr-link"
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {number}
+                                </a>
+                              ) : (
+                                <span className="sec-ecr-plain">{number}</span>
+                              )}
+                              <button
+                                type="button"
+                                className="sec-ecr-edit"
+                                onClick={() =>
+                                  setEcrEditing((prev) => new Set(prev).add(p.id))
+                                }
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={p.id} className="sec-detail-proj-col">
+                          <div className="sec-ecr-edit-stack">
+                            <input
+                              className="sec-detail-cell-input sec-ecr-input"
+                              value={cell.ecr_number ?? ""}
+                              onChange={(e) => setReleaseCell(p.id, "ecr_number", e.target.value)}
+                              placeholder="ECR Number"
+                              aria-label={`ECR Number · ${p.name}`}
+                            />
+                            <input
+                              className="sec-detail-cell-input sec-ecr-input"
+                              type="url"
+                              value={cell.ecr_url ?? ""}
+                              onChange={(e) => setEcrUrl(p.id, e.target.value)}
+                              placeholder="https://…"
+                              aria-label={`ECR URL · ${p.name}`}
+                            />
+                            {number ? (
+                              <button
+                                type="button"
+                                className="sec-ecr-edit"
+                                onClick={() =>
+                                  setEcrEditing((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete(p.id);
+                                    return next;
+                                  })
+                                }
+                              >
+                                Done
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      );
+                    }
                     if (row.kind === "status") {
                       return (
                         <td key={p.id} className="sec-detail-proj-col">

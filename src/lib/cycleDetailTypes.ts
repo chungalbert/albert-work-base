@@ -26,6 +26,8 @@ export const RELEASE_TRACKING_ROWS = [
   { key: "bios_release_date", label: "BIOS Release Date", kind: "date" },
   { key: "bios_version", label: "BIOS Version", kind: "text" },
   { key: "release_comment", label: "Release Comment", kind: "text" },
+  /** Label + URL pair; URL stored in companion `ecr_url` on the same project cell. */
+  { key: "ecr_number", label: "ECR Number", kind: "ecr" },
   { key: "internal_release", label: "Internal Release", kind: "status" },
   { key: "sa_bvt_test", label: "SA BVT Test", kind: "status" },
   /** Renamed from External Release - JY */
@@ -35,7 +37,18 @@ export const RELEASE_TRACKING_ROWS = [
 
 export type ReleaseTrackingKey = (typeof RELEASE_TRACKING_ROWS)[number]["key"];
 
-export type ProjectReleaseCell = Partial<Record<ReleaseTrackingKey, string>>;
+/** Per-project release fields; `ecr_url` pairs with `ecr_number`. */
+export type ProjectReleaseCell = Partial<Record<ReleaseTrackingKey, string>> & {
+  ecr_url?: string;
+};
+
+/** Normalize link href for display (add https:// when scheme missing). */
+export function normalizeEcrHref(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+  return `https://${s}`;
+}
 
 export type CycleReleaseTracking = {
   /** project_id → field values */
