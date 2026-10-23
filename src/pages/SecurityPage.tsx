@@ -992,7 +992,6 @@ function BatchAssignModal({
               {personnel.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.display_name}
-                  {p.username ? ` (${p.username})` : ""}
                 </option>
               ))}
             </select>
@@ -1099,7 +1098,6 @@ function PersonCell({
         {personnel.map((p) => (
           <option key={p.id} value={p.id}>
             {p.display_name}
-            {p.username ? ` (${p.username})` : ""}
           </option>
         ))}
       </select>
