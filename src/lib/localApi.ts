@@ -174,6 +174,7 @@ function normalizeTask(task: Task): Task {
     ...task,
     status: normalizeTaskStatus(task.status),
     note: task.note ?? "",
+    created_at: task.created_at || undefined,
     ...syncAnalyzedFields(normalizeAnalyzedNotes(task)),
   };
 }
@@ -732,12 +733,20 @@ export const localApi = {
   listTasks(projectId: string): Task[] {
     return load()
       .tasks.filter((t) => t.project_id === projectId)
-      .map(normalizeTask);
+      .map(normalizeTask)
+      .sort(
+        (a, b) =>
+          (a.created_at ?? "").localeCompare(b.created_at ?? "") || a.id.localeCompare(b.id),
+      );
   },
 
   createTask(input: Omit<Task, "id">): Task {
     const store = load();
-    const task: Task = { ...input, id: crypto.randomUUID() };
+    const task: Task = {
+      ...input,
+      id: crypto.randomUUID(),
+      created_at: input.created_at || new Date().toISOString(),
+    };
     store.tasks.push(task);
     save(store);
     return task;
@@ -763,7 +772,11 @@ export const localApi = {
     const visible = new Set(localApi.listProjects().map((project) => project.id));
     return store.tasks
       .filter((task) => visible.has(task.project_id))
-      .map(normalizeTask);
+      .map(normalizeTask)
+      .sort(
+        (a, b) =>
+          (a.created_at ?? "").localeCompare(b.created_at ?? "") || a.id.localeCompare(b.id),
+      );
   },
 
   /** Shared notes — full list for every member (no owner filter). */

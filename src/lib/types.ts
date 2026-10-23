@@ -193,6 +193,8 @@ export interface Task {
   analyzed_by: string | null;
   analyzed_at: string | null;
   analyzed_notes: AnalyzedNote[];
+  /** Stable display order key (DB default now()); optional on legacy local rows. */
+  created_at?: string;
 }
 
 export interface AccountInput {
