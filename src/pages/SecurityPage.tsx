@@ -183,9 +183,9 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         r.status.toLowerCase().includes(q) ||
         (profileName(r.owner_id) ?? "").toLowerCase().includes(q) ||
         (profileName(r.reviewer_id) ?? "").toLowerCase().includes(q) ||
-        (profileName(r.sa_owner_id) ?? "").toLowerCase().includes(q) ||
-        (profileName(r.pm_owner_id) ?? "").toLowerCase().includes(q) ||
-        (profileName(r.dqa_owner_id) ?? "").toLowerCase().includes(q),
+        r.sa_owner.toLowerCase().includes(q) ||
+        r.pm_owner.toLowerCase().includes(q) ||
+        r.dqa_owner.toLowerCase().includes(q),
     );
   }, [snap, activeCycle, query, profileName]);
 
@@ -799,29 +799,23 @@ function OverviewPanel({
                       />
                     </td>
                     <td>
-                      <PersonCell
-                        name={profileName(row.sa_owner_id)}
-                        personnel={personnel}
-                        value={row.sa_owner_id}
-                        onChange={(sa_owner_id) => onPatchRoster(row.id, { sa_owner_id })}
+                      <RosterTextCell
+                        value={row.sa_owner}
+                        onCommit={(sa_owner) => onPatchRoster(row.id, { sa_owner })}
                         ariaLabel={`SA Owner for ${row.project_name}`}
                       />
                     </td>
                     <td>
-                      <PersonCell
-                        name={profileName(row.pm_owner_id)}
-                        personnel={personnel}
-                        value={row.pm_owner_id}
-                        onChange={(pm_owner_id) => onPatchRoster(row.id, { pm_owner_id })}
+                      <RosterTextCell
+                        value={row.pm_owner}
+                        onCommit={(pm_owner) => onPatchRoster(row.id, { pm_owner })}
                         ariaLabel={`PM Owner for ${row.project_name}`}
                       />
                     </td>
                     <td>
-                      <PersonCell
-                        name={profileName(row.dqa_owner_id)}
-                        personnel={personnel}
-                        value={row.dqa_owner_id}
-                        onChange={(dqa_owner_id) => onPatchRoster(row.id, { dqa_owner_id })}
+                      <RosterTextCell
+                        value={row.dqa_owner}
+                        onCommit={(dqa_owner) => onPatchRoster(row.id, { dqa_owner })}
                         ariaLabel={`DQA Owner for ${row.project_name}`}
                       />
                     </td>
@@ -1110,6 +1104,50 @@ function PersonCell({
         ))}
       </select>
     </label>
+  );
+}
+
+/** Free-text SA/PM/DQA Owner — type individually; Save on blur / Enter. */
+function RosterTextCell({
+  value,
+  onCommit,
+  ariaLabel,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== (value ?? "").trim()) onCommit(next);
+    else if (draft !== value) setDraft(value);
+  };
+
+  return (
+    <input
+      type="text"
+      className="sec-roster-text-input"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") {
+          setDraft(value);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      aria-label={ariaLabel}
+      placeholder="—"
+    />
   );
 }
 

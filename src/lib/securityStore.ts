@@ -256,9 +256,9 @@ function seedSnapshot(): SecuritySnapshot {
     wave: "Not set",
     owner_id: null,
     reviewer_id: null,
-    sa_owner_id: null,
-    pm_owner_id: null,
-    dqa_owner_id: null,
+    sa_owner: "",
+    pm_owner: "",
+    dqa_owner: "",
     status: "Not Started",
     sort_order: i,
   }));
@@ -274,9 +274,9 @@ function seedSnapshot(): SecuritySnapshot {
       wave: "Not set",
       owner_id: null,
       reviewer_id: null,
-      sa_owner_id: null,
-      pm_owner_id: null,
-      dqa_owner_id: null,
+      sa_owner: "",
+      pm_owner: "",
+      dqa_owner: "",
       status: "Not Started" as SecurityRosterStatus,
       sort_order: i,
     }));
@@ -380,7 +380,27 @@ function personId(raw: unknown): string | null {
   return String(raw);
 }
 
-function normalizeRosterEntry(row: Partial<SecurityRosterEntry> | SecurityRosterEntry): SecurityRosterEntry {
+/** Free-text owner; ignore legacy UUID profile ids left in old localStorage. */
+function textOwner(raw: unknown, legacyId?: unknown): string {
+  const direct = String(raw ?? "").trim();
+  if (direct) return direct;
+  const legacy = String(legacyId ?? "").trim();
+  if (legacy && !/^[0-9a-f-]{36}$/i.test(legacy)) return legacy;
+  return "";
+}
+
+function normalizeRosterEntry(
+  row: (Partial<SecurityRosterEntry> & {
+    sa_owner_id?: string | null;
+    pm_owner_id?: string | null;
+    dqa_owner_id?: string | null;
+  }) | SecurityRosterEntry,
+): SecurityRosterEntry {
+  const legacy = row as {
+    sa_owner_id?: string | null;
+    pm_owner_id?: string | null;
+    dqa_owner_id?: string | null;
+  };
   return {
     id: String(row.id ?? ""),
     cycle_id: String(row.cycle_id ?? ""),
@@ -389,9 +409,9 @@ function normalizeRosterEntry(row: Partial<SecurityRosterEntry> | SecurityRoster
     wave: String(row.wave ?? "Not set"),
     owner_id: personId(row.owner_id),
     reviewer_id: personId(row.reviewer_id),
-    sa_owner_id: personId(row.sa_owner_id),
-    pm_owner_id: personId(row.pm_owner_id),
-    dqa_owner_id: personId(row.dqa_owner_id),
+    sa_owner: textOwner(row.sa_owner, legacy.sa_owner_id),
+    pm_owner: textOwner(row.pm_owner, legacy.pm_owner_id),
+    dqa_owner: textOwner(row.dqa_owner, legacy.dqa_owner_id),
     status: normalizeStatus(row.status != null ? String(row.status) : undefined),
     sort_order: Number(row.sort_order) || 0,
   };
@@ -533,9 +553,9 @@ export const securityStore = {
       wave: "Not set",
       owner_id: null,
       reviewer_id: null,
-      sa_owner_id: null,
-      pm_owner_id: null,
-      dqa_owner_id: null,
+      sa_owner: "",
+      pm_owner: "",
+      dqa_owner: "",
       status: "Not Started",
       sort_order: i,
     }));
@@ -629,9 +649,9 @@ export const securityStore = {
         wave: "Not set",
         owner_id: null,
         reviewer_id: null,
-        sa_owner_id: null,
-        pm_owner_id: null,
-        dqa_owner_id: null,
+        sa_owner: "",
+        pm_owner: "",
+        dqa_owner: "",
         status: "Not Started" as SecurityRosterStatus,
         sort_order: kept.length + i,
       }));
@@ -678,9 +698,9 @@ export const securityStore = {
     if (patch.wave !== undefined) next.wave = patch.wave;
     if (patch.owner_id !== undefined) next.owner_id = patch.owner_id;
     if (patch.reviewer_id !== undefined) next.reviewer_id = patch.reviewer_id;
-    if (patch.sa_owner_id !== undefined) next.sa_owner_id = patch.sa_owner_id;
-    if (patch.pm_owner_id !== undefined) next.pm_owner_id = patch.pm_owner_id;
-    if (patch.dqa_owner_id !== undefined) next.dqa_owner_id = patch.dqa_owner_id;
+    if (patch.sa_owner !== undefined) next.sa_owner = patch.sa_owner.trim();
+    if (patch.pm_owner !== undefined) next.pm_owner = patch.pm_owner.trim();
+    if (patch.dqa_owner !== undefined) next.dqa_owner = patch.dqa_owner.trim();
     if (patch.status !== undefined) next.status = normalizeStatus(patch.status);
     snap.roster[idx] = next;
     saveLocal(snap);

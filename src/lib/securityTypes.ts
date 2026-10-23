@@ -41,12 +41,12 @@ export type SecurityRosterEntry = {
   wave: string;
   owner_id: string | null;
   reviewer_id: string | null;
-  /** Personnel SA owner for this roster row. */
-  sa_owner_id: string | null;
-  /** Personnel PM owner for this roster row. */
-  pm_owner_id: string | null;
-  /** Personnel DQA owner for this roster row. */
-  dqa_owner_id: string | null;
+  /** Free-text SA owner name (typed individually, not Personnel FK). */
+  sa_owner: string;
+  /** Free-text PM owner name. */
+  pm_owner: string;
+  /** Free-text DQA owner name. */
+  dqa_owner: string;
   status: SecurityRosterStatus;
   sort_order: number;
 };
@@ -58,9 +58,9 @@ export type SecurityRosterPatch = Partial<
     | "wave"
     | "owner_id"
     | "reviewer_id"
-    | "sa_owner_id"
-    | "pm_owner_id"
-    | "dqa_owner_id"
+    | "sa_owner"
+    | "pm_owner"
+    | "dqa_owner"
     | "status"
   >
 >;
