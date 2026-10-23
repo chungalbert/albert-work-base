@@ -5937,6 +5937,16 @@ button.sec-th-affordance:disabled {
   color: var(--sec-text);
   background-color: var(--sec-panel);
 }
+.sec-ecr-cell.is-collapsed {
+  cursor: text;
+}
+.sec-ecr-cell.is-collapsed:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.sec-ecr-cell.is-collapsed:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.55);
+  outline-offset: -2px;
+}
 .sec-ecr-edit-stack {
   display: flex;
   flex-direction: column;
@@ -5954,8 +5964,10 @@ button.sec-th-affordance:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   min-width: 0;
+  min-height: 1.6em;
 }
 .sec-ecr-link {
   color: var(--sec-link);
@@ -5972,18 +5984,10 @@ button.sec-th-affordance:disabled {
   font-weight: 600;
   word-break: break-all;
 }
-.sec-ecr-edit {
-  border: none;
-  background: transparent;
+.sec-ecr-empty {
   color: var(--sec-muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font-size: 12px;
 }
-.sec-ecr-edit:hover { color: var(--sec-link); }
 .sec-status-derived {
   display: inline-flex;
   align-items: center;
