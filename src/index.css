@@ -4799,13 +4799,40 @@ select.pi-state {
 .sec-th-affordance {
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   margin-left: 4px;
+  padding: 0;
   border-radius: 4px;
   border: 1px solid var(--sec-line);
-  font-size: 11px;
+  background: var(--sec-panel-2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
   color: var(--sec-muted);
+  cursor: pointer;
+  vertical-align: middle;
+}
+button.sec-th-affordance:hover:not(:disabled) {
+  color: var(--sec-teal);
+  border-color: var(--sec-teal);
+  background: var(--sec-teal-bg);
+}
+button.sec-th-affordance:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sec-batch-modal .sec-batch-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sec-line);
+  background: var(--sec-panel-2);
+  color: var(--sec-text);
+  color-scheme: dark;
+}
+.sec-batch-checklist {
+  max-height: min(42vh, 360px);
 }
 .sec-proj-name { font-weight: 600; color: var(--sec-text); }
 .sec-roster-empty {
