@@ -13,6 +13,7 @@ import type {
   SecurityCycle,
   SecurityIssue,
   SecurityRosterEntry,
+  SecurityRosterPatch,
   SecuritySnapshot,
   SecurityWave,
 } from "../lib/securityTypes";
@@ -181,7 +182,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         r.wave.toLowerCase().includes(q) ||
         r.status.toLowerCase().includes(q) ||
         (profileName(r.owner_id) ?? "").toLowerCase().includes(q) ||
-        (profileName(r.reviewer_id) ?? "").toLowerCase().includes(q),
+        (profileName(r.reviewer_id) ?? "").toLowerCase().includes(q) ||
+        (profileName(r.sa_owner_id) ?? "").toLowerCase().includes(q) ||
+        (profileName(r.pm_owner_id) ?? "").toLowerCase().includes(q) ||
+        (profileName(r.dqa_owner_id) ?? "").toLowerCase().includes(q),
     );
   }, [snap, activeCycle, query, profileName]);
 
@@ -241,10 +245,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     return map;
   }, [cycles, snap]);
 
-  const patchRoster = async (
-    id: string,
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ) => {
+  const patchRoster = async (id: string, patch: SecurityRosterPatch) => {
     setError("");
     try {
       await runSave(async () => {
@@ -261,10 +262,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   };
 
   /** Batch-assign Wave or Reviewer to many roster rows (one Saving indicator). */
-  const patchRosterMany = async (
-    ids: string[],
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ) => {
+  const patchRosterMany = async (ids: string[], patch: SecurityRosterPatch) => {
     if (ids.length === 0) return;
     setError("");
     try {
@@ -586,14 +584,8 @@ function OverviewPanel({
   onOpenDetail: () => void;
   onNewCycle: () => void;
   onEditCycle: () => void;
-  onPatchRoster: (
-    id: string,
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ) => void;
-  onPatchRosterMany: (
-    ids: string[],
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ) => Promise<void>;
+  onPatchRoster: (id: string, patch: SecurityRosterPatch) => void;
+  onPatchRosterMany: (ids: string[], patch: SecurityRosterPatch) => Promise<void>;
 }) {
   const [batchModal, setBatchModal] = useState<null | "wave" | "reviewer">(null);
 
@@ -742,13 +734,16 @@ function OverviewPanel({
                     +
                   </button>
                 </th>
+                <th>SA Owner</th>
+                <th>PM Owner</th>
+                <th>DQA Owner</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {roster.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="sec-roster-empty">
+                  <td colSpan={9} className="sec-roster-empty">
                     0 entries
                   </td>
                 </tr>
@@ -801,6 +796,33 @@ function OverviewPanel({
                         value={row.reviewer_id}
                         onChange={(reviewer_id) => onPatchRoster(row.id, { reviewer_id })}
                         ariaLabel={`Reviewer for ${row.project_name}`}
+                      />
+                    </td>
+                    <td>
+                      <PersonCell
+                        name={profileName(row.sa_owner_id)}
+                        personnel={personnel}
+                        value={row.sa_owner_id}
+                        onChange={(sa_owner_id) => onPatchRoster(row.id, { sa_owner_id })}
+                        ariaLabel={`SA Owner for ${row.project_name}`}
+                      />
+                    </td>
+                    <td>
+                      <PersonCell
+                        name={profileName(row.pm_owner_id)}
+                        personnel={personnel}
+                        value={row.pm_owner_id}
+                        onChange={(pm_owner_id) => onPatchRoster(row.id, { pm_owner_id })}
+                        ariaLabel={`PM Owner for ${row.project_name}`}
+                      />
+                    </td>
+                    <td>
+                      <PersonCell
+                        name={profileName(row.dqa_owner_id)}
+                        personnel={personnel}
+                        value={row.dqa_owner_id}
+                        onChange={(dqa_owner_id) => onPatchRoster(row.id, { dqa_owner_id })}
+                        ariaLabel={`DQA Owner for ${row.project_name}`}
                       />
                     </td>
                     <td>
@@ -875,10 +897,7 @@ function BatchAssignModal({
   waveOptions: string[];
   personnel: Profile[];
   onClose: () => void;
-  onApply: (
-    ids: string[],
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ) => Promise<void>;
+  onApply: (ids: string[], patch: SecurityRosterPatch) => Promise<void>;
 }) {
   const [wave, setWave] = useState(waveOptions[0] ?? "Not set");
   const [reviewerId, setReviewerId] = useState("");

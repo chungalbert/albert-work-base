@@ -41,9 +41,29 @@ export type SecurityRosterEntry = {
   wave: string;
   owner_id: string | null;
   reviewer_id: string | null;
+  /** Personnel SA owner for this roster row. */
+  sa_owner_id: string | null;
+  /** Personnel PM owner for this roster row. */
+  pm_owner_id: string | null;
+  /** Personnel DQA owner for this roster row. */
+  dqa_owner_id: string | null;
   status: SecurityRosterStatus;
   sort_order: number;
 };
+
+/** Fields editable on a roster row (immediate Save via updateRosterEntry). */
+export type SecurityRosterPatch = Partial<
+  Pick<
+    SecurityRosterEntry,
+    | "wave"
+    | "owner_id"
+    | "reviewer_id"
+    | "sa_owner_id"
+    | "pm_owner_id"
+    | "dqa_owner_id"
+    | "status"
+  >
+>;
 
 export type SecurityIssue = {
   id: string;
