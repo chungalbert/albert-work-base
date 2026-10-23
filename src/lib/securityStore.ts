@@ -23,6 +23,7 @@ import type {
   SecurityIssue,
   SecurityIssueInput,
   SecurityRosterEntry,
+  SecurityRosterPatch,
   SecurityRosterStatus,
   SecuritySnapshot,
   SecurityWave,
@@ -255,6 +256,9 @@ function seedSnapshot(): SecuritySnapshot {
     wave: "Not set",
     owner_id: null,
     reviewer_id: null,
+    sa_owner: "",
+    pm_owner: "",
+    dqa_owner: "",
     status: "Not Started",
     sort_order: i,
   }));
@@ -270,6 +274,9 @@ function seedSnapshot(): SecuritySnapshot {
       wave: "Not set",
       owner_id: null,
       reviewer_id: null,
+      sa_owner: "",
+      pm_owner: "",
+      dqa_owner: "",
       status: "Not Started" as SecurityRosterStatus,
       sort_order: i,
     }));
@@ -348,7 +355,7 @@ function loadLocal(): SecuritySnapshot {
       .filter((c): c is SecurityCycle => Boolean(c));
     return {
       cycles,
-      roster: parsed.roster ?? [],
+      roster: (parsed.roster ?? []).map((row) => normalizeRosterEntry(row)),
       issues: (parsed.issues ?? []).map((issue) => ({
         ...issue,
         reference_path: String(issue.reference_path ?? ""),
@@ -366,6 +373,48 @@ function saveLocal(snap: SecuritySnapshot) {
 function normalizeStatus(raw: string | undefined): SecurityRosterStatus {
   if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
   return "Not Started";
+}
+
+function personId(raw: unknown): string | null {
+  if (raw == null || raw === "") return null;
+  return String(raw);
+}
+
+/** Free-text owner; ignore legacy UUID profile ids left in old localStorage. */
+function textOwner(raw: unknown, legacyId?: unknown): string {
+  const direct = String(raw ?? "").trim();
+  if (direct) return direct;
+  const legacy = String(legacyId ?? "").trim();
+  if (legacy && !/^[0-9a-f-]{36}$/i.test(legacy)) return legacy;
+  return "";
+}
+
+function normalizeRosterEntry(
+  row: (Partial<SecurityRosterEntry> & {
+    sa_owner_id?: string | null;
+    pm_owner_id?: string | null;
+    dqa_owner_id?: string | null;
+  }) | SecurityRosterEntry,
+): SecurityRosterEntry {
+  const legacy = row as {
+    sa_owner_id?: string | null;
+    pm_owner_id?: string | null;
+    dqa_owner_id?: string | null;
+  };
+  return {
+    id: String(row.id ?? ""),
+    cycle_id: String(row.cycle_id ?? ""),
+    project_id: String(row.project_id ?? ""),
+    project_name: String(row.project_name ?? ""),
+    wave: String(row.wave ?? "Not set"),
+    owner_id: personId(row.owner_id),
+    reviewer_id: personId(row.reviewer_id),
+    sa_owner: textOwner(row.sa_owner, legacy.sa_owner_id),
+    pm_owner: textOwner(row.pm_owner, legacy.pm_owner_id),
+    dqa_owner: textOwner(row.dqa_owner, legacy.dqa_owner_id),
+    status: normalizeStatus(row.status != null ? String(row.status) : undefined),
+    sort_order: Number(row.sort_order) || 0,
+  };
 }
 
 function asStringArray(value: unknown): string[] {
@@ -504,6 +553,9 @@ export const securityStore = {
       wave: "Not set",
       owner_id: null,
       reviewer_id: null,
+      sa_owner: "",
+      pm_owner: "",
+      dqa_owner: "",
       status: "Not Started",
       sort_order: i,
     }));
@@ -597,6 +649,9 @@ export const securityStore = {
         wave: "Not set",
         owner_id: null,
         reviewer_id: null,
+        sa_owner: "",
+        pm_owner: "",
+        dqa_owner: "",
         status: "Not Started" as SecurityRosterStatus,
         sort_order: kept.length + i,
       }));
@@ -627,10 +682,7 @@ export const securityStore = {
     });
   },
 
-  async updateRosterEntry(
-    id: string,
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
-  ): Promise<SecurityRosterEntry> {
+  async updateRosterEntry(id: string, patch: SecurityRosterPatch): Promise<SecurityRosterEntry> {
     if (await probeCloud()) {
       try {
         return await cloudApi.updateSecurityRosterEntry(id, patch);
@@ -646,6 +698,9 @@ export const securityStore = {
     if (patch.wave !== undefined) next.wave = patch.wave;
     if (patch.owner_id !== undefined) next.owner_id = patch.owner_id;
     if (patch.reviewer_id !== undefined) next.reviewer_id = patch.reviewer_id;
+    if (patch.sa_owner !== undefined) next.sa_owner = patch.sa_owner.trim();
+    if (patch.pm_owner !== undefined) next.pm_owner = patch.pm_owner.trim();
+    if (patch.dqa_owner !== undefined) next.dqa_owner = patch.dqa_owner.trim();
     if (patch.status !== undefined) next.status = normalizeStatus(patch.status);
     snap.roster[idx] = next;
     saveLocal(snap);

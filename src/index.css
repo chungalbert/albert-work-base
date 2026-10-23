@@ -5013,10 +5013,29 @@ button.sec-th-affordance:disabled {
   min-width: 7rem;
   appearance: auto;
 }
+.sec-roster-text-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 6.5rem;
+  max-width: 160px;
+  border: 1px solid var(--sec-line);
+  background-color: var(--input-bg);
+  color: var(--sec-text);
+  color-scheme: dark;
+  padding: 4px 8px;
+  border-radius: 8px;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+}
+.sec-roster-text-input::placeholder {
+  color: var(--sec-muted);
+}
 .sec-wave-cell select.sec-roster-select:focus,
 .sec-person-cell select.sec-roster-select:focus,
 .sec-status-pill select.sec-roster-select:focus,
-.sec-roster-table select.sec-roster-select:focus {
+.sec-roster-table select.sec-roster-select:focus,
+.sec-roster-text-input:focus {
   border-color: var(--sec-link);
 }
 .sec-roster-select option,

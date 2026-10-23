@@ -28,6 +28,10 @@ create table if not exists public.security_roster (
   wave text not null default 'Not set',
   owner_id text references public.profiles(id) on delete set null,
   reviewer_id text references public.profiles(id) on delete set null,
+  /** Free-text role owners (typed in roster; not profile FKs). */
+  sa_owner text not null default '',
+  pm_owner text not null default '',
+  dqa_owner text not null default '',
   status text not null default 'Not Started',
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),

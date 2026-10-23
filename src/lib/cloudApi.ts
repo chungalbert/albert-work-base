@@ -114,6 +114,9 @@ function mapSecurityRoster(row: Record<string, unknown>): SecurityRosterEntry {
     wave: String(row.wave ?? "Not set"),
     owner_id: row.owner_id ? String(row.owner_id) : null,
     reviewer_id: row.reviewer_id ? String(row.reviewer_id) : null,
+    sa_owner: String(row.sa_owner ?? "").trim(),
+    pm_owner: String(row.pm_owner ?? "").trim(),
+    dqa_owner: String(row.dqa_owner ?? "").trim(),
     status: normalizeSecurityStatus(row.status != null ? String(row.status) : undefined),
     sort_order: Number(row.sort_order) || 0,
   };
@@ -1390,6 +1393,9 @@ export const cloudApi = {
         wave: "Not set",
         owner_id: null,
         reviewer_id: null,
+        sa_owner: "",
+        pm_owner: "",
+        dqa_owner: "",
         status: "Not Started",
         sort_order: i,
       }));
@@ -1477,6 +1483,9 @@ export const cloudApi = {
         wave: "Not set",
         owner_id: null,
         reviewer_id: null,
+        sa_owner: "",
+        pm_owner: "",
+        dqa_owner: "",
         status: "Not Started",
         sort_order: existing.length + i,
       }));
@@ -1517,12 +1526,26 @@ export const cloudApi = {
 
   async updateSecurityRosterEntry(
     id: string,
-    patch: Partial<Pick<SecurityRosterEntry, "wave" | "owner_id" | "reviewer_id" | "status">>,
+    patch: Partial<
+      Pick<
+        SecurityRosterEntry,
+        | "wave"
+        | "owner_id"
+        | "reviewer_id"
+        | "sa_owner"
+        | "pm_owner"
+        | "dqa_owner"
+        | "status"
+      >
+    >,
   ): Promise<SecurityRosterEntry> {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (patch.wave !== undefined) updates.wave = patch.wave;
     if (patch.owner_id !== undefined) updates.owner_id = patch.owner_id;
     if (patch.reviewer_id !== undefined) updates.reviewer_id = patch.reviewer_id;
+    if (patch.sa_owner !== undefined) updates.sa_owner = patch.sa_owner.trim();
+    if (patch.pm_owner !== undefined) updates.pm_owner = patch.pm_owner.trim();
+    if (patch.dqa_owner !== undefined) updates.dqa_owner = patch.dqa_owner.trim();
     if (patch.status !== undefined) updates.status = normalizeSecurityStatus(patch.status);
     const { data, error } = await sb()
       .from("security_roster")
@@ -1530,7 +1553,18 @@ export const cloudApi = {
       .eq("id", id)
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      const msg = String(error.message ?? error);
+      if (
+        /sa_owner|pm_owner|dqa_owner/i.test(msg) ||
+        /PGRST204|PGRST205|schema cache/i.test(msg)
+      ) {
+        throw new Error(
+          "Neon 尚未載入 security_roster SA/PM/DQA Owner 文字欄位。請套用 neon/security-roster-role-owners.sql，並在 Neon Console → Data API 按 Refresh schema cache 後重試。",
+        );
+      }
+      throw error;
+    }
     return mapSecurityRoster(data as Record<string, unknown>);
   },
 
