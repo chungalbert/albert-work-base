@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
-import { isTaskOpen, taskStatusLabel, type Task } from "../lib/types";
+import { isTaskClosed, isTaskOpen, isTaskOpening, taskStatusLabel, type Task } from "../lib/types";
 import { todayISO, parseISODate, formatISODate } from "../lib/dates";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -32,11 +32,16 @@ export function DashboardPage() {
     return tasks.filter((t) => user.is_admin || t.assignee_id === user.id || isTaskOpen(t.status));
   }, [tasks, user]);
 
-  const openItems = myTasks.filter((t) => isTaskOpen(t.status));
+  // OPEN ITEMS = Open (opening) only — not Working / Closing / Closed.
+  const openItems = myTasks.filter((t) => isTaskOpening(t.status));
+  // MY ISSUE LIST = active pipeline (Open + Working + Closing).
+  const activeItems = myTasks.filter((t) => isTaskOpen(t.status));
   const alertItems = myTasks.filter(isAlertTask);
-  const closedItems = myTasks.filter((t) => !isTaskOpen(t.status));
+  const closedItems = myTasks.filter((t) => isTaskClosed(t.status));
+  // Close rate funnel: Closed / (Open + Closed); Working/Closing excluded.
+  const closeRateDenom = openItems.length + closedItems.length;
   const closeRate =
-    myTasks.length === 0 ? 0 : Math.round((closedItems.length / myTasks.length) * 100);
+    closeRateDenom === 0 ? 0 : Math.round((closedItems.length / closeRateDenom) * 100);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -106,7 +111,7 @@ export function DashboardPage() {
               <p className="dash-stat-value">{closedItems.length}</p>
             </div>
             <p className="dash-close-rate">
-              CLOSE RATE {closeRate}% {closedItems.length}/{myTasks.length}
+              CLOSE RATE {closeRate}% {closedItems.length}/{closeRateDenom}
             </p>
           </div>
         </article>
@@ -116,7 +121,7 @@ export function DashboardPage() {
         <section className="dash-panel dash-issues">
           <header className="dash-panel-head">
             <h2><span className="bar bar-blue" /> MY ISSUE LIST</h2>
-            <span className="dash-badge">{openItems.length}</span>
+            <span className="dash-badge">{activeItems.length}</span>
           </header>
           <div className="dash-table-wrap">
             <table className="dash-table">
@@ -129,7 +134,7 @@ export function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {openItems.length === 0 ? (
+                {activeItems.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="dash-empty">
                       {initialLoading
@@ -140,7 +145,7 @@ export function DashboardPage() {
                     </td>
                   </tr>
                 ) : (
-                  openItems.slice(0, 12).map((task) => (
+                  activeItems.slice(0, 12).map((task) => (
                     <tr key={task.id}>
                       <td className="mono">{shortId(task.id)}</td>
                       <td>

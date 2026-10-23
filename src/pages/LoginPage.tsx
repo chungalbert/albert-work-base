@@ -80,7 +80,7 @@ export function LoginPage() {
           >
             <div className="icon-box icon-blue" aria-hidden="true">◇</div>
             <h2>Projects &amp; Issues</h2>
-            <p>Manage projects, assign people, and track issue status through Opening → Verify.</p>
+            <p>Manage projects, assign people, and track issue status through Open → Verify.</p>
             <span className="ok-pill">Available</span>
           </article>
           <article

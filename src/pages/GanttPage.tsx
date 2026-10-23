@@ -224,7 +224,7 @@ export function GanttPage() {
         )}
         <div ref={host} />
         <ul className="gantt-legend" aria-label="狀態顏色">
-          <li><span className="gantt-swatch opening" /> Opening</li>
+          <li><span className="gantt-swatch opening" /> Open</li>
           <li><span className="gantt-swatch working" /> Working</li>
           <li><span className="gantt-swatch closing" /> Closing</li>
           <li><span className="gantt-swatch verify" /> Verify</li>
