@@ -11,7 +11,7 @@ create table if not exists public.profiles (
   email text not null,
   is_admin boolean not null default false,
   personnel_role text not null default 'DE'
-    check (personnel_role in ('Admin', 'DM', 'DL', 'DE')),
+    check (personnel_role in ('Admin', 'DM', 'DL', 'DE', 'DQA', 'PM', 'SA')),
   created_at timestamptz not null default now()
 );
 

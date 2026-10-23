@@ -89,8 +89,14 @@ export function isTaskOpen(status: string): boolean {
   return normalizeTaskStatus(status) !== "verify";
 }
 
-export const PERSONNEL_ROLES = ["Admin", "DM", "DL", "DE"] as const;
+export const PERSONNEL_ROLES = ["Admin", "DM", "DL", "DE", "DQA", "PM", "SA"] as const;
 export type PersonnelRole = (typeof PERSONNEL_ROLES)[number];
+
+/** Roles limited to WORKSPACE Security + INV&PCR only. */
+export const WORKSPACE_LIMITED_ROLES = ["DQA", "PM", "SA"] as const;
+export type WorkspaceLimitedRole = (typeof WORKSPACE_LIMITED_ROLES)[number];
+
+export const WORKSPACE_LIMITED_VIEWS = ["security", "inv-pcr"] as const satisfies readonly ViewId[];
 
 export interface PersonnelColumn {
   id: string;
@@ -104,7 +110,7 @@ export interface Profile {
   unit: string;
   email: string;
   is_admin: boolean;
-  /** Org role shown on Personnel (Admin / DM / DL / DE). */
+  /** Org role shown on Personnel (Admin / DM / DL / DE / DQA / PM / SA). */
   personnel_role?: PersonnelRole;
   /** Values for user-defined Personnel columns. */
   custom?: Record<string, string>;
@@ -115,6 +121,15 @@ export function normalizePersonnelRole(profile: Pick<Profile, "is_admin" | "pers
     return profile.personnel_role;
   }
   return profile.is_admin ? "Admin" : "DE";
+}
+
+export function isWorkspaceLimitedRole(role: PersonnelRole): boolean {
+  return (WORKSPACE_LIMITED_ROLES as readonly string[]).includes(role);
+}
+
+export function canAccessView(role: PersonnelRole, view: ViewId): boolean {
+  if (!isWorkspaceLimitedRole(role)) return true;
+  return (WORKSPACE_LIMITED_VIEWS as readonly string[]).includes(view);
 }
 
 export interface ProjectColumn {

@@ -18,7 +18,12 @@ import { LoadingIndicator } from "./components/LoadingIndicator";
 import { PageLoadingGate, viewNeedsStoreBoot } from "./components/PageLoadingGate";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
-import type { ViewId } from "./lib/types";
+import {
+  canAccessView,
+  isWorkspaceLimitedRole,
+  normalizePersonnelRole,
+  type ViewId,
+} from "./lib/types";
 import { ALL_PROJECTS_ID } from "./lib/projects";
 import { roleLabel } from "./lib/roles";
 
@@ -172,18 +177,29 @@ function Shell() {
     feature: true,
     management: true,
   });
+  const personnelRole = user ? normalizePersonnelRole(user) : "DE";
+  const limitedWorkspace = isWorkspaceLimitedRole(personnelRole);
   const isLeader = Boolean(user?.is_admin || role === "leader");
-  // Only Personnel is leader-gated. FEATURE peers (Tool, Note, Chat, 教學) stay for everyone.
-  const groups = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: isLeader ? group.items : group.items.filter((item) => item.id !== "people"),
-  })).filter((group) => group.items.length > 0);
+  // DQA/PM/SA: only Security + INV&PCR. Otherwise Personnel is leader-gated;
+  // FEATURE peers (Tool, Note, Chat, 教學) stay for Admin/DM/DL/DE.
+  const groups = NAV_GROUPS.map((group) => {
+    let items = group.items;
+    if (limitedWorkspace) {
+      items = items.filter((item) => canAccessView(personnelRole, item.id));
+    } else if (!isLeader) {
+      items = items.filter((item) => item.id !== "people");
+    }
+    return { ...group, items };
+  }).filter((group) => group.items.length > 0);
 
-  const currentView = !isLeader && view === "people"
-    ? "home"
-    : view === "tasks"
-      ? "projects"
-      : view;
+  const resolvedView: ViewId = view === "tasks" ? "projects" : view;
+  const currentView: ViewId = limitedWorkspace
+    ? canAccessView(personnelRole, resolvedView)
+      ? resolvedView
+      : "security"
+    : !isLeader && resolvedView === "people"
+      ? "home"
+      : resolvedView;
   const initial = (user?.display_name || user?.username || "?").trim().charAt(0).toUpperCase();
   const isProjectIssue = currentView === "projects";
   const isPersonnel = currentView === "people";
