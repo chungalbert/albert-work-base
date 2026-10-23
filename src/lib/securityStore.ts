@@ -408,7 +408,10 @@ function formatMmDd(isoOrSlash: string): string {
   if (!s) return "";
   // Accept YYYY-MM-DD or locale 年/月/日 already stored as ISO.
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[2]}-${m[3]}`;
+  if (m) return `${m[2]}/${m[3]}`;
+  // Legacy mm-dd → mm/dd for display consistency.
+  const legacy = s.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (legacy) return `${legacy[1].padStart(2, "0")}/${legacy[2].padStart(2, "0")}`;
   return s;
 }
 
@@ -416,15 +419,16 @@ export function securityDisplayDate(isoOrSlash: string): string {
   return formatMmDd(isoOrSlash);
 }
 
-export function cycleMetrics(roster: SecurityRosterEntry[]) {
+export function cycleMetrics(roster: SecurityRosterEntry[], definedWaveCount?: number) {
   const total = roster.length;
   const count = (status: SecurityRosterStatus) => roster.filter((r) => r.status === status).length;
-  const wavesSet = new Set(
-    roster.map((r) => r.wave).filter((w) => w && w !== "Not set"),
-  );
   return {
     total,
-    waves: wavesSet.size,
+    /** Prefer cycle-defined wave count; fall back to distinct roster assignments. */
+    waves:
+      typeof definedWaveCount === "number"
+        ? definedWaveCount
+        : new Set(roster.map((r) => r.wave).filter((w) => w && w !== "Not set")).size,
     internal: count("Internal release"),
     saBvt: count("SA BVT"),
     completed: count("Completed"),
