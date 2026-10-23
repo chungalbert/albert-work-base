@@ -13,12 +13,10 @@ import type {
   SecurityCycle,
   SecurityIssue,
   SecurityRosterEntry,
-  SecurityRosterStatus,
   SecuritySnapshot,
   SecurityWave,
 } from "../lib/securityTypes";
 import {
-  SECURITY_STATUSES,
   newWaveId,
   normalizeCycleWaves,
   rosterWaveOptions,
@@ -106,7 +104,17 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     setError("");
     try {
       const next = await securityStore.load();
-      setSnap(next);
+      // Keep roster Status aligned with saved Project Release Tracking (Done rules).
+      let roster = next.roster;
+      for (const c of next.cycles) {
+        const detail = await securityStore.loadCycleDetail(c.id);
+        if (!detail) continue;
+        const updates = await securityStore.syncRosterStatusesFromRelease(c.id, detail.release);
+        if (updates.length === 0) continue;
+        const byId = new Map(updates.map((r) => [r.id, r]));
+        roster = roster.map((r) => byId.get(r.id) ?? r);
+      }
+      setSnap({ ...next, roster });
       setActiveCycleId((prev) => {
         if (prev && next.cycles.some((c) => c.id === prev)) return prev;
         return next.cycles[0]?.id ?? null;
@@ -378,8 +386,26 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               onBack={closeCycleDetail}
               onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
               onSave={async (doc) => {
-                const saved = await runSave(() => securityStore.saveCycleDetail(doc));
+                const { saved, rosterUpdates } = await runSave(async () => {
+                  const savedDoc = await securityStore.saveCycleDetail(doc);
+                  const updates = await securityStore.syncRosterStatusesFromRelease(
+                    savedDoc.cycle_id,
+                    savedDoc.release,
+                  );
+                  return { saved: savedDoc, rosterUpdates: updates };
+                });
                 setDetailDoc(saved);
+                if (rosterUpdates.length > 0) {
+                  const byId = new Map(rosterUpdates.map((r) => [r.id, r]));
+                  setSnap((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          roster: prev.roster.map((r) => byId.get(r.id) ?? r),
+                        }
+                      : prev,
+                  );
+                }
               }}
             />
           )
@@ -714,7 +740,10 @@ function OverviewPanel({
                       />
                     </td>
                     <td>
-                      <label className="sec-status-pill">
+                      <span
+                        className="sec-status-pill sec-status-derived"
+                        title="Derived from Project Release Tracking (Internal / SA BVT / External Web / WU → Done)"
+                      >
                         <span
                           className={`sec-dot${
                             row.status === "Completed"
@@ -725,21 +754,8 @@ function OverviewPanel({
                           }`}
                           aria-hidden="true"
                         />
-                        <select
-                          className="sec-roster-select"
-                          value={row.status}
-                          onChange={(e) =>
-                            onPatchRoster(row.id, { status: e.target.value as SecurityRosterStatus })
-                          }
-                          aria-label={`Status for ${row.project_name}`}
-                        >
-                          {SECURITY_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                        <span className="sec-status-derived-label">{row.status}</span>
+                      </span>
                     </td>
                   </tr>
                   );

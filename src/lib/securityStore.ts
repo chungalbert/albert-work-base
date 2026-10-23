@@ -8,9 +8,11 @@ import { cloudApi } from "./cloudApi";
 import type {
   CycleDetailDoc,
   CycleDetailItem,
+  CycleReleaseTracking,
   ItemApplyCell,
 } from "./cycleDetailTypes";
 import {
+  deriveRosterStatusFromRelease,
   emptyCycleDetail,
   newDetailItemId,
   normalizeApplyCell,
@@ -731,6 +733,28 @@ export const securityStore = {
     map[normalized.cycle_id] = normalized;
     saveLocalDetails(map);
     return normalized;
+  },
+
+  /**
+   * Sync Project roster Status from Project Release Tracking (Done rules).
+   * Returns updated roster rows (only those that changed).
+   */
+  async syncRosterStatusesFromRelease(
+    cycleId: string,
+    release: CycleReleaseTracking,
+  ): Promise<SecurityRosterEntry[]> {
+    const snap = await securityStore.load();
+    const rows = snap.roster.filter((r) => r.cycle_id === cycleId);
+    const patches = rows
+      .map((row) => {
+        const next = deriveRosterStatusFromRelease(release.by_project[row.project_id]);
+        return next === row.status ? null : { id: row.id, status: next };
+      })
+      .filter((p): p is { id: string; status: SecurityRosterStatus } => Boolean(p));
+    if (patches.length === 0) return [];
+    return Promise.all(
+      patches.map((p) => securityStore.updateRosterEntry(p.id, { status: p.status })),
+    );
   },
 
   /** Exported for cloudApi row mapping. */

@@ -97,3 +97,29 @@ export function newDetailItemId(): string {
 export function detailDocSignature(doc: Pick<CycleDetailDoc, "items" | "release">): string {
   return JSON.stringify({ items: doc.items, release: doc.release });
 }
+
+/** Treat release dropdown as Done (exact match; Ongoing/Blocked/N/A/empty are not). */
+export function isReleaseDone(value: string | undefined | null): boolean {
+  return String(value ?? "").trim() === "Done";
+}
+
+/**
+ * Derive Project roster Status from Project Release Tracking for one project.
+ * Priority (highest first):
+ * 1. Internal + SA BVT + External Web + External WU all Done → Completed
+ * 2. Internal + SA BVT Done → SA BVT
+ * 3. Internal Done → Internal release
+ * 4. Else → Not Started
+ */
+export function deriveRosterStatusFromRelease(
+  cell: ProjectReleaseCell | undefined | null,
+): "Not Started" | "Internal release" | "SA BVT" | "Completed" {
+  const ir = isReleaseDone(cell?.internal_release);
+  const sa = isReleaseDone(cell?.sa_bvt_test);
+  const web = isReleaseDone(cell?.external_release_web);
+  const wu = isReleaseDone(cell?.external_release_wu);
+  if (ir && sa && web && wu) return "Completed";
+  if (ir && sa) return "SA BVT";
+  if (ir) return "Internal release";
+  return "Not Started";
+}
