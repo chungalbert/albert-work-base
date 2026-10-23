@@ -4542,19 +4542,29 @@ select.pi-state {
 }
 
 /* —— Security Update (BIOS Security Updates) —— */
+.shell-security .shell-main {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
 .shell-security .page-security {
   padding: 0;
   background: var(--sec-bg);
   color: var(--sec-text);
+  flex: 1;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .sec-page {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--sec-bg);
 }
 .sec-toolbar {
@@ -4643,6 +4653,12 @@ select.pi-state {
   gap: 14px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
+}
+/* Cycle detail owns its own matrix scrollport (AIOSW-style). */
+.sec-body:has(.sec-detail) {
+  overflow: hidden;
+  padding-bottom: 16px;
 }
 .sec-error {
   margin: 0;
@@ -5419,10 +5435,17 @@ button.sec-th-affordance:disabled {
   text-underline-offset: 3px;
 }
 .sec-detail {
+  --sec-freeze-1: 200px;
+  --sec-freeze-2: 120px;
+  --sec-proj-col: 168px;
+  --sec-freeze-total: calc(var(--sec-freeze-1) + var(--sec-freeze-2));
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .sec-detail-toolbar {
   display: flex;
@@ -5430,6 +5453,7 @@ button.sec-th-affordance:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px 20px;
+  flex-shrink: 0;
 }
 .sec-detail-back {
   border: none;
@@ -5496,27 +5520,44 @@ button.sec-th-affordance:disabled {
   line-height: 1;
 }
 .sec-detail-matrix-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--sec-line);
   border-radius: 10px;
   background: var(--sec-panel);
+  /* Keep both axes available so the matrix scrolls inside the page like AIOSW. */
+  scrollbar-gutter: stable;
 }
 .sec-detail-matrix {
   width: max-content;
-  min-width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   font-size: 13px;
 }
-.sec-detail-unified .sec-col-item { width: 168px; }
-.sec-detail-unified .sec-col-comment { width: 100px; }
-.sec-detail-unified .sec-col-proj { width: 168px; }
+.sec-detail-unified .sec-col-item {
+  width: var(--sec-freeze-1);
+  min-width: var(--sec-freeze-1);
+}
+.sec-detail-unified .sec-col-comment {
+  width: var(--sec-freeze-2);
+  min-width: var(--sec-freeze-2);
+}
+.sec-detail-unified .sec-col-proj {
+  width: var(--sec-proj-col);
+  min-width: var(--sec-proj-col);
+  max-width: var(--sec-proj-col);
+}
 .sec-detail-matrix th,
 .sec-detail-matrix td {
   border-top: 1px solid var(--sec-line);
   border-left: 1px solid var(--sec-line);
   padding: 8px 10px;
   vertical-align: middle;
+  box-sizing: border-box;
 }
 .sec-detail-matrix th:first-child,
 .sec-detail-matrix td:first-child { border-left: none; }
@@ -5538,16 +5579,16 @@ button.sec-th-affordance:disabled {
 }
 .sec-detail-sticky-1 {
   left: 0;
-  min-width: 168px;
-  width: 168px;
-  max-width: 168px;
+  min-width: var(--sec-freeze-1);
+  width: var(--sec-freeze-1);
+  max-width: var(--sec-freeze-1);
   z-index: 2;
 }
 .sec-detail-sticky-2 {
-  left: 168px;
-  min-width: 100px;
-  width: 100px;
-  max-width: 100px;
+  left: var(--sec-freeze-1);
+  min-width: var(--sec-freeze-2);
+  width: var(--sec-freeze-2);
+  max-width: var(--sec-freeze-2);
   z-index: 2;
   box-shadow: 1px 0 0 var(--sec-line);
 }
@@ -5556,12 +5597,12 @@ button.sec-th-affordance:disabled {
   background: var(--sec-panel-2);
 }
 .sec-detail-comment-col {
-  min-width: 100px;
+  min-width: var(--sec-freeze-2);
 }
 .sec-detail-proj-col {
-  width: 168px;
-  min-width: 168px;
-  max-width: 168px;
+  width: var(--sec-proj-col);
+  min-width: var(--sec-proj-col);
+  max-width: var(--sec-proj-col);
   text-align: center;
 }
 .sec-detail-proj-head {
@@ -5860,6 +5901,14 @@ button.sec-th-affordance:disabled {
   color: var(--sec-muted);
   font-size: 12px;
 }
+/* Release rows span both frozen columns — keep combined freeze width + edge shadow. */
+.sec-release-label.sec-detail-sticky-1 {
+  left: 0;
+  width: var(--sec-freeze-total);
+  min-width: var(--sec-freeze-total);
+  max-width: var(--sec-freeze-total);
+  box-shadow: 1px 0 0 var(--sec-line);
+}
 .sec-release-field-row .sec-detail-sticky-col {
   background: var(--sec-panel);
 }
@@ -5949,9 +5998,10 @@ button.sec-th-affordance:disabled {
 }
 @media (max-width: 720px) {
   .sec-detail-toolbar { flex-direction: column; }
-  .sec-detail-unified .sec-col-item,
-  .sec-detail-sticky-1 { width: 140px; min-width: 140px; max-width: 140px; }
-  .sec-detail-unified .sec-col-comment,
-  .sec-detail-sticky-2 { width: 88px; min-width: 88px; max-width: 88px; left: 140px; }
+  .sec-detail {
+    --sec-freeze-1: 140px;
+    --sec-freeze-2: 88px;
+    --sec-proj-col: 148px;
+  }
 }
 
