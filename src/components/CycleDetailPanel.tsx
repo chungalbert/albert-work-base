@@ -489,7 +489,16 @@ export function CycleDetailPanel({
                   aria-expanded={releaseOpen}
                   onClick={() => setReleaseOpen((o) => !o)}
                 >
-                  <span aria-hidden="true">{releaseOpen ? "∨" : "›"}</span> Project Release Tracking
+                  <span className="sec-release-chevron" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      {releaseOpen ? (
+                        <path d="M6 9l6 6 6-6" />
+                      ) : (
+                        <path d="M9 6l6 6-6 6" />
+                      )}
+                    </svg>
+                  </span>
+                  <span className="sec-release-toggle-label">Project Release Tracking</span>
                 </button>
               </td>
             </tr>
