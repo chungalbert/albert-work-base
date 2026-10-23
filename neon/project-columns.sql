@@ -12,6 +12,7 @@ alter table public.projects
   add column if not exists security_update text not null default '',
   add column if not exists talent_policy text not null default '',
   add column if not exists owner text not null default '',
+  add column if not exists project_owner text not null default '',
   add column if not exists tpe_owner text not null default '',
   add column if not exists custom jsonb not null default '{}'::jsonb;
 
@@ -110,7 +111,8 @@ select
       {"id":"00000000-0000-4000-8000-0000000000d7","label":"SECURITY UPDATE","sort_order":6},
       {"id":"00000000-0000-4000-8000-0000000000d8","label":"TALENT POLICY","sort_order":7},
       {"id":"00000000-0000-4000-8000-0000000000d9","label":"PROJECT LEADER","sort_order":8},
-      {"id":"00000000-0000-4000-8000-0000000000da","label":"Owner","sort_order":9}
+      {"id":"00000000-0000-4000-8000-0000000000db","label":"Owner","sort_order":9},
+      {"id":"00000000-0000-4000-8000-0000000000da","label":"TPE OWNER","sort_order":10}
     ]',
     '__kssw_columns_seeded', '1'
   )

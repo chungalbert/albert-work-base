@@ -140,8 +140,12 @@ export interface Project {
   /** Project Leader (standard middle column; Neon `owner`; removable via Admin column defs). */
   owner?: string;
   /**
-   * Owner (standard middle column beside PROJECT LEADER; Neon `tpe_owner`).
-   * Distinct from `owner`. Legacy UI label: TPE OWNER.
+   * Owner (beside PROJECT LEADER; Neon `project_owner`).
+   * Distinct from `owner` (PROJECT LEADER) and `tpe_owner` (TPE OWNER).
+   */
+  project_owner?: string;
+  /**
+   * TPE OWNER (Neon `tpe_owner`). Distinct from `owner` and `project_owner`.
    */
   tpe_owner?: string;
   /** Values for user-defined Projects columns. */

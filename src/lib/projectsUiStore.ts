@@ -62,12 +62,21 @@ export const PROJECT_STANDARD_COLUMNS = [
     id: "00000000-0000-4000-8000-0000000000d9",
   },
   {
-    key: "tpe_owner",
+    key: "project_owner",
     /**
-     * Distinct from PROJECT LEADER (`projects.owner`).
-     * Neon field: `projects.tpe_owner`. Legacy UI label was "TPE OWNER".
+     * Owner (beside PROJECT LEADER). Neon `projects.project_owner`.
+     * Distinct from TPE OWNER (`tpe_owner`) and PROJECT LEADER (`owner`).
      */
     label: "Owner",
+    id: "00000000-0000-4000-8000-0000000000db",
+  },
+  {
+    key: "tpe_owner",
+    /**
+     * TPE OWNER. Neon `projects.tpe_owner`.
+     * Restored after #85 briefly relabeled this column as "Owner".
+     */
+    label: "TPE OWNER",
     id: "00000000-0000-4000-8000-0000000000da",
   },
 ] as const;
@@ -76,7 +85,7 @@ export type ProjectStandardKey = (typeof PROJECT_STANDARD_COLUMNS)[number]["key"
 
 /**
  * Labels that map to PROJECT LEADER (`projects.owner`).
- * Do NOT include bare "OWNER" — that maps to the separate Owner (`tpe_owner`) column.
+ * Do NOT include bare "OWNER" — that maps to Owner (`project_owner`).
  */
 const PROJECT_LEADER_LABEL_ALIASES = new Set([
   "PROJECT LEADER",
@@ -85,15 +94,15 @@ const PROJECT_LEADER_LABEL_ALIASES = new Set([
 ]);
 
 /**
- * Labels that map to Owner (`projects.tpe_owner`).
- * Includes legacy "TPE OWNER" and bare "OWNER" (post–#84 PROJECT LEADER rename).
+ * Labels that map to Owner (`projects.project_owner`).
+ * Bare "OWNER" / "Owner" only — not TPE OWNER.
  */
-const PROJECT_OWNER_LABEL_ALIASES = new Set([
-  "OWNER",
-  "TPE OWNER",
-  "TPE_OWNER",
-  "TPEOWNER",
-]);
+const PROJECT_OWNER_LABEL_ALIASES = new Set(["OWNER"]);
+
+/**
+ * Labels that map to TPE OWNER (`projects.tpe_owner`).
+ */
+const TPE_OWNER_LABEL_ALIASES = new Set(["TPE OWNER", "TPE_OWNER", "TPEOWNER"]);
 
 /** @deprecated Prefer PROJECT_LOCKED_COLUMN + PROJECT_STANDARD_COLUMNS; kept for callers that list all field keys. */
 export const PROJECT_BUILTIN_COLUMNS = [
@@ -125,6 +134,10 @@ export function isProjectOwnerColumnLabel(label: string): boolean {
   return PROJECT_OWNER_LABEL_ALIASES.has(normalizeLabel(label));
 }
 
+export function isTpeOwnerColumnLabel(label: string): boolean {
+  return TPE_OWNER_LABEL_ALIASES.has(normalizeLabel(label));
+}
+
 export function findStandardProjectColumn(
   labelOrId: string,
 ): (typeof PROJECT_STANDARD_COLUMNS)[number] | undefined {
@@ -141,8 +154,12 @@ export function findStandardProjectColumn(
   if (PROJECT_LEADER_LABEL_ALIASES.has(upper)) {
     return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "owner");
   }
-  if (PROJECT_OWNER_LABEL_ALIASES.has(upper) || normalizeLabel("Owner") === upper) {
+  // TPE OWNER before bare OWNER so "TPE OWNER" never collapses into Owner.
+  if (TPE_OWNER_LABEL_ALIASES.has(upper)) {
     return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "tpe_owner");
+  }
+  if (PROJECT_OWNER_LABEL_ALIASES.has(upper) || normalizeLabel("Owner") === upper) {
+    return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "project_owner");
   }
   return PROJECT_STANDARD_COLUMNS.find((col) => normalizeLabel(col.label) === upper);
 }
@@ -161,9 +178,10 @@ export function defaultStandardProjectColumns(): ProjectColumn[] {
 }
 
 /**
- * Normalize / place Owner beside PROJECT LEADER.
- * - Always rewrites legacy TPE OWNER / OWNER labels to the standard Owner def.
- * - When `insertIfMissing`, also inserts Owner after PROJECT LEADER (first seed / SQL-backed ensure).
+ * Normalize / place Owner + TPE OWNER beside PROJECT LEADER.
+ * Order: PROJECT LEADER → Owner (`project_owner`) → TPE OWNER (`tpe_owner`).
+ * - Rewrites ids/labels for the three personnel columns.
+ * - When `insertIfMissing`, inserts Owner and/or TPE OWNER after PROJECT LEADER.
  */
 export function ensureOwnerBesideLeader(
   columns: ProjectColumn[],
@@ -173,16 +191,21 @@ export function ensureOwnerBesideLeader(
   changed: boolean;
 } {
   const insertIfMissing = options?.insertIfMissing ?? false;
-  const ownerStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "tpe_owner");
   const leaderStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "owner");
-  if (!ownerStd || !leaderStd) return { columns, changed: false };
+  const ownerStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "project_owner");
+  const tpeStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "tpe_owner");
+  if (!leaderStd || !ownerStd || !tpeStd) return { columns, changed: false };
 
   let changed = false;
   const next = columns.map((col) => {
     const std = findStandardProjectColumn(col.id) ?? findStandardProjectColumn(col.label);
-    if (std?.key === "tpe_owner" && (col.id !== ownerStd.id || col.label !== ownerStd.label)) {
+    if (std?.key === "project_owner" && (col.id !== ownerStd.id || col.label !== ownerStd.label)) {
       changed = true;
       return { id: ownerStd.id, label: ownerStd.label };
+    }
+    if (std?.key === "tpe_owner" && (col.id !== tpeStd.id || col.label !== tpeStd.label)) {
+      changed = true;
+      return { id: tpeStd.id, label: tpeStd.label };
     }
     if (std?.key === "owner" && (col.id !== leaderStd.id || col.label !== leaderStd.label)) {
       changed = true;
@@ -191,25 +214,33 @@ export function ensureOwnerBesideLeader(
     return col;
   });
 
-  const ownerIdx = next.findIndex((c) => c.id === ownerStd.id);
-  if (ownerIdx >= 0) {
-    const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
-    if (leaderIdx >= 0 && ownerIdx !== leaderIdx + 1) {
-      const [ownerCol] = next.splice(ownerIdx, 1);
-      const insertAt = next.findIndex((c) => c.id === leaderStd.id) + 1;
-      next.splice(insertAt, 0, ownerCol);
-      changed = true;
+  const placeAfterLeader = (std: { id: string; label: string }, offset: number) => {
+    const existingIdx = next.findIndex((c) => c.id === std.id);
+    if (existingIdx >= 0) {
+      const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
+      const want = leaderIdx >= 0 ? leaderIdx + offset : offset - 1;
+      if (want >= 0 && existingIdx !== want) {
+        const [col] = next.splice(existingIdx, 1);
+        const leaderNow = next.findIndex((c) => c.id === leaderStd.id);
+        const insertAt = leaderNow >= 0 ? leaderNow + offset : next.length;
+        next.splice(Math.min(insertAt, next.length), 0, col);
+        changed = true;
+      }
+      return;
     }
-    return { columns: next, changed };
-  }
+    if (!insertIfMissing) return;
+    const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
+    const col = { id: std.id, label: std.label };
+    if (leaderIdx >= 0) next.splice(leaderIdx + offset, 0, col);
+    else next.push(col);
+    changed = true;
+  };
 
-  if (!insertIfMissing) return { columns: next, changed };
+  // Owner immediately after leader; TPE OWNER after Owner (offset accounts for insert).
+  placeAfterLeader(ownerStd, 1);
+  placeAfterLeader(tpeStd, 2);
 
-  const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
-  const ownerCol = { id: ownerStd.id, label: ownerStd.label };
-  if (leaderIdx >= 0) next.splice(leaderIdx + 1, 0, ownerCol);
-  else next.push(ownerCol);
-  return { columns: next, changed: true };
+  return { columns: next, changed };
 }
 
 export type ProjectFieldPatch = {
@@ -224,6 +255,7 @@ export type ProjectFieldPatch = {
   security_update?: string;
   talent_policy?: string;
   owner?: string;
+  project_owner?: string;
   tpe_owner?: string;
   custom?: Record<string, string>;
 };
@@ -279,7 +311,7 @@ function normalizeManagedColumns(columns: ProjectColumn[]): ProjectColumn[] {
 /**
  * One-time: ensure former builtins exist as removable defs (stable ids).
  * After `alreadySeeded`, Admin removals persist — missing standards are not re-inserted,
- * except Owner (`tpe_owner`) which is ensured beside PROJECT LEADER (legacy TPE OWNER).
+ * except Owner + TPE OWNER which are ensured beside PROJECT LEADER (label restore / split).
  */
 export function seedStandardProjectColumns(
   columns: ProjectColumn[],
@@ -287,9 +319,8 @@ export function seedStandardProjectColumns(
 ): { columns: ProjectColumn[]; changed: boolean; seeded: boolean } {
   if (alreadySeeded) {
     const normalized = normalizeManagedColumns(columns);
-    // Rewrite legacy TPE OWNER → Owner; do not force-reinsert if Admin removed it
-    // (Neon SQL / first seed inserts when missing).
-    const ensured = ensureOwnerBesideLeader(normalized, { insertIfMissing: false });
+    // Always rewrite labels; insert Owner / TPE OWNER if missing so Add Column is not needed.
+    const ensured = ensureOwnerBesideLeader(normalized, { insertIfMissing: true });
     const changed =
       ensured.changed ||
       normalized.length !== columns.length ||
@@ -393,15 +424,52 @@ function migrateOwnerCustomIntoField(state: ProjectsUiState): boolean {
   return changed;
 }
 
-/** Promote legacy TPE OWNER / Owner custom cells into `tpe_owner`. */
+/** Promote legacy Owner custom cells into `project_owner`. */
+function migrateProjectOwnerCustomIntoField(state: ProjectsUiState): boolean {
+  let changed = false;
+  const std = findStandardProjectColumn("project_owner");
+  if (!std) return false;
+  for (const col of state.columns) {
+    const isOwnerCol =
+      col.id === std.id ||
+      col.id === "project_owner" ||
+      (isProjectOwnerColumnLabel(col.label) && !isTpeOwnerColumnLabel(col.label));
+    if (!isOwnerCol) continue;
+    for (const overlay of Object.values(state.overlays)) {
+      const fromCustom = overlay.custom?.[col.id];
+      if (
+        fromCustom != null &&
+        fromCustom !== "" &&
+        (overlay.project_owner == null || overlay.project_owner === "")
+      ) {
+        overlay.project_owner = fromCustom;
+        changed = true;
+      }
+      if (overlay.custom && col.id in overlay.custom && col.id !== std.id) {
+        const next = { ...overlay.custom };
+        delete next[col.id];
+        overlay.custom = next;
+        changed = true;
+      }
+    }
+    if (col.id !== std.id || col.label !== std.label) {
+      col.id = std.id;
+      col.label = std.label;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** Promote legacy TPE OWNER custom cells into `tpe_owner`. */
 function migrateTpeOwnerCustomIntoField(state: ProjectsUiState): boolean {
   let changed = false;
   const std = findStandardProjectColumn("tpe_owner");
   if (!std) return false;
   for (const col of state.columns) {
-    const isOwnerCol =
-      col.id === std.id || isProjectOwnerColumnLabel(col.label) || col.id === "tpe_owner";
-    if (!isOwnerCol) continue;
+    const isTpeCol =
+      col.id === std.id || isTpeOwnerColumnLabel(col.label) || col.id === "tpe_owner";
+    if (!isTpeCol) continue;
     for (const overlay of Object.values(state.overlays)) {
       const fromCustom = overlay.custom?.[col.id];
       if (
@@ -431,6 +499,7 @@ function migrateTpeOwnerCustomIntoField(state: ProjectsUiState): boolean {
 function prepareState(state: ProjectsUiState): boolean {
   let changed = scrubLockedCustomColumns(state);
   if (migrateOwnerCustomIntoField(state)) changed = true;
+  if (migrateProjectOwnerCustomIntoField(state)) changed = true;
   if (migrateTpeOwnerCustomIntoField(state)) changed = true;
   const ensured = seedStandardProjectColumns(state.columns, localColumnsSeeded());
   if (ensured.changed) {
@@ -581,6 +650,7 @@ export const projectsUiStore = {
       security_update: overlay.security_update ?? project.security_update ?? "",
       talent_policy: overlay.talent_policy ?? project.talent_policy ?? "",
       owner: overlay.owner ?? project.owner ?? "",
+      project_owner: overlay.project_owner ?? project.project_owner ?? "",
       tpe_owner: overlay.tpe_owner ?? project.tpe_owner ?? "",
       custom: { ...(project.custom ?? {}), ...(overlay.custom ?? {}) },
     };
@@ -606,6 +676,7 @@ export const projectsUiStore = {
     if (patch.security_update !== undefined) next.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) next.talent_policy = patch.talent_policy.trim();
     if (patch.owner !== undefined) next.owner = patch.owner.trim();
+    if (patch.project_owner !== undefined) next.project_owner = patch.project_owner.trim();
     if (patch.tpe_owner !== undefined) next.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       next.custom = { ...(prev.custom ?? {}), ...patch.custom };

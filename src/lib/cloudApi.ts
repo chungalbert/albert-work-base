@@ -218,6 +218,7 @@ function normalizeProjectRow(row: Project): Project {
     security_update: row.security_update ?? "",
     talent_policy: row.talent_policy ?? "",
     owner: row.owner ?? "",
+    project_owner: row.project_owner ?? "",
     tpe_owner,
     custom,
   };
@@ -541,6 +542,7 @@ export const cloudApi = {
     if (patch.security_update !== undefined) updates.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) updates.talent_policy = patch.talent_policy.trim();
     if (patch.owner !== undefined) updates.owner = patch.owner.trim();
+    if (patch.project_owner !== undefined) updates.project_owner = patch.project_owner.trim();
     if (patch.tpe_owner !== undefined) updates.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       updates.custom = { ...(base.custom ?? {}), ...patch.custom };
@@ -664,7 +666,14 @@ export const cloudApi = {
       for (const col of tableCols) {
         const prev = byId.get(col.id);
         if (prev) {
-          byId.set(col.id, { ...prev, ...col, label: col.label || prev.label });
+          // Prefer meta label when both exist — avoids stale project_columns
+          // (e.g. da still "Owner" after TPE OWNER restore) overwriting meta.
+          byId.set(col.id, {
+            ...prev,
+            ...col,
+            label: prev.label || col.label,
+            sort_order: prev.sort_order,
+          });
         } else if (!alreadySeeded) {
           byId.set(col.id, col);
         }
