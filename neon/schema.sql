@@ -32,7 +32,9 @@ create table if not exists public.projects (
   security_update text not null default '',
   talent_policy text not null default '',
   owner text not null default '',
-  -- Distinct from owner (PROJECT LEADER); UI label "Owner" / legacy "TPE OWNER".
+  -- Owner (beside PROJECT LEADER); distinct from tpe_owner (TPE OWNER).
+  project_owner text not null default '',
+  -- TPE OWNER; distinct from owner (PROJECT LEADER) and project_owner (Owner).
   tpe_owner text not null default '',
   custom jsonb not null default '{}'::jsonb
 );

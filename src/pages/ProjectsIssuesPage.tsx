@@ -55,6 +55,7 @@ function mergeProjectDraft(project: Project, patch: ProjectFieldPatch | undefine
       patch.security_update !== undefined ? patch.security_update : project.security_update,
     talent_policy: patch.talent_policy !== undefined ? patch.talent_policy : project.talent_policy,
     owner: patch.owner !== undefined ? patch.owner : project.owner,
+    project_owner: patch.project_owner !== undefined ? patch.project_owner : project.project_owner,
     tpe_owner: patch.tpe_owner !== undefined ? patch.tpe_owner : project.tpe_owner,
     custom: { ...(project.custom ?? {}), ...(patch.custom ?? {}) },
   };
@@ -248,6 +249,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         p.security_update,
         p.talent_policy,
         p.owner,
+        p.project_owner,
         p.tpe_owner,
         ...Object.values(p.custom ?? {}),
       ]
@@ -901,7 +903,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                         if (stdKey) {
                           const value = standardFieldValue(draft, stdKey);
                           const isDate = stdKey === "ss_date" || stdKey === "eol_date";
-                          if (stdKey === "owner" || stdKey === "tpe_owner") {
+                          if (
+                            stdKey === "owner" ||
+                            stdKey === "project_owner" ||
+                            stdKey === "tpe_owner"
+                          ) {
                             const selected = ownerSelectValue(value);
                             const orphan =
                               selected !== "" &&
@@ -910,7 +916,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                               );
                             const fieldKey = stdKey;
                             const aria =
-                              stdKey === "owner" ? "Project Leader" : "Owner";
+                              stdKey === "owner"
+                                ? "Project Leader"
+                                : stdKey === "tpe_owner"
+                                  ? "TPE Owner"
+                                  : "Owner";
                             return (
                               <td key={col.id}>
                                 {canEditFields ? (
