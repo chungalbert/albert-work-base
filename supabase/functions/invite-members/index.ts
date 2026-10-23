@@ -147,6 +147,9 @@ Deno.serve(async (req) => {
     let username = profile?.username ?? "";
 
     if (!profile) {
+      if (!me?.is_admin) {
+        return json({ error: "只有 Admin 可以新增 Member" }, 403);
+      }
       username = usernameFromEmail(email, taken);
       taken.add(username);
       password = randomPassword();

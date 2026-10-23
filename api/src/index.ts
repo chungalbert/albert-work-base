@@ -221,32 +221,10 @@ export default {
       }
 
       if (path === "/auth/bootstrap-admin" && req.method === "POST") {
-        const existing = await sql`select 1 from profiles limit 1`;
-        if (existing.length > 0) throw new HttpError(409, "管理員已存在");
-        const body = await readJson(req);
-        const username = String(body.username ?? "").trim().toLowerCase();
-        const email = String(body.email ?? "").trim().toLowerCase();
-        const password = String(body.password ?? "");
-        if (!username || !email || password.length < 6) {
-          throw new HttpError(400, "請填寫帳號、EMAIL，密碼至少 6 碼");
-        }
-        const id = crypto.randomUUID();
-        const password_hash = await hashPassword(password);
-        await sql`insert into users (id, email, username, password_hash) values (${id}, ${email}, ${username}, ${password_hash})`;
-        await sql`
-          insert into profiles (id, username, display_name, email, is_admin, unit)
-          values (${id}, ${username}, ${username}, ${email}, true, '工作基地')
-        `;
-        const token = await createSession(sql, id);
-        const profile: Profile = {
-          id,
-          username,
-          display_name: username,
-          unit: "工作基地",
-          email,
-          is_admin: true,
-        };
-        return json(env, req, { token, profile });
+        throw new HttpError(
+          403,
+          "Public Create admin is disabled. Ask an Admin to Add Member in Personnel.",
+        );
       }
 
       if (path === "/auth/change-password" && req.method === "POST") {
@@ -648,7 +626,6 @@ export default {
       // --- Admin (invite / reset / delete) ---
       if (path === "/api/admin/invite" && req.method === "POST") {
         const me = await requireUser(sql, req);
-        if (!(await canManageAccounts(sql, me))) throw new HttpError(403, "只有專案領導或管理員可以邀請");
         const body = await readJson(req);
         const rows = (body.rows ?? []) as Array<{
           display_name: string;
@@ -670,6 +647,7 @@ export default {
           let userId = (found[0] as { id: string } | undefined)?.id;
           let password = DEFAULT_PASSWORD;
           if (!userId) {
+            if (!me.is_admin) throw new HttpError(403, "只有 Admin 可以新增 Member");
             let base =
               email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 24) || "user";
             let username = base;
@@ -689,12 +667,17 @@ export default {
             credentials.push({ username, email, password });
           }
           if (row.project_id) {
+            if (!(await canManageAccounts(sql, me)) && !(await isProjectLeader(sql, me, row.project_id))) {
+              throw new HttpError(403, "只有專案領導或管理員可以加人");
+            }
             const role = row.role === "leader" ? "leader" : "member";
             await sql`
               insert into project_members (project_id, user_id, role)
               values (${row.project_id}, ${userId}, ${role})
               on conflict (project_id, user_id) do update set role = excluded.role
             `;
+          } else if (!me.is_admin) {
+            throw new HttpError(403, "只有 Admin 可以新增 Member");
           }
         }
         return json(env, req, { credentials });

@@ -1,17 +1,14 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { DEFAULT_PASSWORD, hasSupabaseConfig } from "../lib/util";
-import { api } from "../lib/api";
+import { DEFAULT_PASSWORD } from "../lib/util";
 
 export function LoginPage() {
-  const { signIn, refresh } = useAuth();
+  const { signIn } = useAuth();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -21,21 +18,6 @@ export function LoginPage() {
       await signIn(account.trim(), password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "登入失敗");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const bootstrap = async () => {
-    setError("");
-    setBusy(true);
-    try {
-      if (!adminEmail.trim()) throw new Error("請填管理員 EMAIL。");
-      if (password.length < 6) throw new Error("密碼至少 6 個字。");
-      await api.bootstrapAdmin(account.trim() || "admin", password, adminEmail.trim());
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "建立管理員失敗");
     } finally {
       setBusy(false);
     }
@@ -101,7 +83,7 @@ export function LoginPage() {
           <div className="login-overlay" onClick={() => setShowLogin(false)}>
             <form className="login-card gate-card" onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}>
               <h2 style={{ marginTop: 0 }}>Login</h2>
-              <p className="hint">Use account or EMAIL. First time: create admin (password ≥ 6 chars).</p>
+              <p className="hint">Use the account or EMAIL from Personnel.</p>
               <div className="field">
                 <label htmlFor="account">Account</label>
                 <input
@@ -127,31 +109,6 @@ export function LoginPage() {
               <button className="btn-blue" type="submit" disabled={busy}>
                 {busy ? "…" : "Login"}
               </button>
-              {hasSupabaseConfig() && (
-                <p className="hint" style={{ marginTop: 16 }}>
-                  First cloud setup?
-                  <button type="button" className="ghost" onClick={() => setShowSetup((v) => !v)}>
-                    Create admin
-                  </button>
-                </p>
-              )}
-              {showSetup && (
-                <div style={{ marginTop: 16 }}>
-                  <div className="field">
-                    <label htmlFor="admin-email">Admin EMAIL</label>
-                    <input
-                      id="admin-email"
-                      type="email"
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <button className="btn btn-gold" type="button" onClick={bootstrap} disabled={busy}>
-                    Create first admin with credentials above
-                  </button>
-                </div>
-              )}
             </form>
           </div>
         )}
@@ -159,9 +116,12 @@ export function LoginPage() {
         <section className="how-card">
           <h2>How to use</h2>
           <ol>
-            <li>Click <strong>Login</strong> — use the account or EMAIL from Personnel (e.g. lay). New users: password {DEFAULT_PASSWORD}</li>
+            <li>
+              Click <strong>Login</strong> — use the account or EMAIL issued by an Admin via Personnel →{" "}
+              <strong>Add Member</strong>. New users: password {DEFAULT_PASSWORD}
+            </li>
             <li>After login, use sidebar <strong>Change password</strong> anytime</li>
-            <li>Leaders manage personnel and issues; members see their own work</li>
+            <li>Admins manage personnel and issues; members see their own work</li>
             <li>Dashboard summarizes open / alert / closed issues for the selected project filter</li>
           </ol>
         </section>

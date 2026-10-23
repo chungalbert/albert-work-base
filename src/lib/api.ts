@@ -726,9 +726,8 @@ export const api = {
     if (hasSupabaseConfig()) return cloudApi.allTasksForUser();
     return localApi.allTasks();
   },
-  async bootstrapAdmin(username: string, password: string, email: string) {
-    if (!hasSupabaseConfig()) throw new Error("本機模式不需建立雲端管理員");
-    return cloudApi.bootstrapAdmin(username, password, email);
+  async bootstrapAdmin(_username: string, _password: string, _email: string) {
+    throw new Error("Public Create admin is disabled. Ask an Admin to Add Member in Personnel.");
   },
 
   /** Shared notes — visible to all authenticated members (no owner filter). */
