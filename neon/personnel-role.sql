@@ -1,4 +1,4 @@
--- Persist Personnel Role (Admin / DM / DL / DE) on profiles.
+-- Persist Personnel Role (Admin / DM / DL / DE / DQA / PM / SA) on profiles.
 -- Safe to re-run. Apply in Neon SQL editor, then refresh Data API schema cache.
 
 alter table public.profiles
@@ -10,7 +10,7 @@ alter table public.profiles
 
 alter table public.profiles
   add constraint profiles_personnel_role_check
-  check (personnel_role in ('Admin', 'DM', 'DL', 'DE'));
+  check (personnel_role in ('Admin', 'DM', 'DL', 'DE', 'DQA', 'PM', 'SA'));
 
 -- Backfill from is_admin so existing Admins keep Admin; others stay DE until edited.
 update public.profiles
