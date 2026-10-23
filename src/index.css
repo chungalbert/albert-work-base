@@ -5013,6 +5013,11 @@ button.sec-th-affordance:disabled {
   min-width: 7rem;
   appearance: auto;
 }
+/* Owner / Reviewer: ~75% of shared roster select width. */
+.sec-person-cell select.sec-roster-select {
+  max-width: 135px;
+  min-width: 5.25rem;
+}
 .sec-roster-text-input {
   box-sizing: border-box;
   width: 100%;
