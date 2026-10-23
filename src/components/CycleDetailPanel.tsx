@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type {
   CycleDetailDoc,
   CycleDetailItem,
@@ -39,6 +39,7 @@ type ProjectCol = {
 function cloneItems(items: CycleDetailItem[]): CycleDetailItem[] {
   return items.map((it) => ({
     ...it,
+    ...(it.issue_id ? { issue_id: it.issue_id } : {}),
     applies: Object.fromEntries(
       Object.entries(it.applies).map(([pid, cell]) => [pid, { ...normalizeApplyCell(cell) }]),
     ),
@@ -95,6 +96,7 @@ export function CycleDetailPanel({
   onBack,
   onEditCycle,
   onSave,
+  onLinkIssue,
 }: {
   cycle: SecurityCycle;
   roster: SecurityRosterEntry[];
@@ -108,9 +110,15 @@ export function CycleDetailPanel({
   onEditCycle: () => void;
   /** Persist full draft (items + release) on Save All. */
   onSave: (doc: CycleDetailDoc) => Promise<void>;
+  /** Persist Issue Summary ↔ cycle link (cycle_ids + projects). */
+  onLinkIssue: (
+    issueId: string,
+    projectIds: string[],
+  ) => Promise<SecurityIssue>;
 }) {
   const [infoOpenId, setInfoOpenId] = useState<string | null>(null);
   const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null);
+  const [addIssueOpen, setAddIssueOpen] = useState(false);
 
   const projectCols: ProjectCol[] = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p]));
@@ -240,20 +248,44 @@ export function CycleDetailPanel({
     [],
   );
 
-  const addItem = () => {
+  const linkedIssueIds = useMemo(
+    () => new Set(draft.items.map((it) => it.issue_id).filter((id): id is string => Boolean(id))),
+    [draft.items],
+  );
+
+  const addIssueFromSaved = async (
+    issue: SecurityIssue,
+    problemDescription: string,
+    affectedProjectIds: string[],
+  ) => {
+    await onLinkIssue(issue.id, affectedProjectIds);
     setDraft((prev) => {
+      if (prev.items.some((it) => it.issue_id === issue.id)) return prev;
       const applies: Record<string, ItemApplyCell> = {};
-      for (const pid of projectIds) applies[pid] = emptyApplyCell();
+      for (const pid of projectIds) {
+        applies[pid] = {
+          status: affectedProjectIds.includes(pid) ? "Applied" : "",
+          comment: "",
+        };
+      }
+      const detailLine =
+        problemDescription.trim() ||
+        issue.reference_path ||
+        issue.detail ||
+        issue.oem_request_id ||
+        "";
       const item: CycleDetailItem = {
         id: newDetailItemId(),
-        title: "New security item",
-        detail: "",
+        issue_id: issue.id,
+        title: issue.title,
+        detail: detailLine,
         cycle_comment: "",
         applies,
         sort_order: prev.items.length,
       };
       return { ...prev, items: [...prev.items, item] };
     });
+    setAddIssueOpen(false);
   };
 
   const removeItem = (id: string) => {
@@ -342,7 +374,7 @@ export function CycleDetailPanel({
           <button
             type="button"
             className="sec-btn-ghost sec-toolbar-action"
-            onClick={addItem}
+            onClick={() => setAddIssueOpen(true)}
             disabled={busy}
           >
             <span className="sec-toolbar-action-icon" aria-hidden="true">
@@ -367,6 +399,24 @@ export function CycleDetailPanel({
       </div>
 
       {error && <p className="sec-error">{error}</p>}
+
+      {addIssueOpen ? (
+        <AddIssueToCycleModal
+          issues={issues}
+          excludeIssueIds={linkedIssueIds}
+          projects={projectCols}
+          busy={busy}
+          onClose={() => setAddIssueOpen(false)}
+          onAdd={async (issue, description, projectIds) => {
+            try {
+              await addIssueFromSaved(issue, description, projectIds);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+              throw err;
+            }
+          }}
+        />
+      ) : null}
 
       {infoOpenId ? (
         <ProjectInfoPopover
@@ -715,6 +765,195 @@ export function CycleDetailPanel({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AddIssueToCycleModal({
+  issues,
+  excludeIssueIds,
+  projects,
+  busy,
+  onClose,
+  onAdd,
+}: {
+  issues: SecurityIssue[];
+  excludeIssueIds: Set<string>;
+  projects: ProjectCol[];
+  busy: boolean;
+  onClose: () => void;
+  onAdd: (
+    issue: SecurityIssue,
+    description: string,
+    projectIds: string[],
+  ) => Promise<void>;
+}) {
+  const available = useMemo(
+    () =>
+      issues
+        .filter((i) => !excludeIssueIds.has(i.id))
+        .slice()
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" })),
+    [issues, excludeIssueIds],
+  );
+
+  const [issueId, setIssueId] = useState("");
+  const [description, setDescription] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const selectedIssue = available.find((i) => i.id === issueId) ?? null;
+
+  const onSelectIssue = (id: string) => {
+    setIssueId(id);
+    const issue = available.find((i) => i.id === id);
+    if (issue) {
+      setDescription(issue.detail || issue.oem_request_id || "");
+      const preselect = new Set(
+        projects.filter((p) => issue.project_ids.includes(p.id)).map((p) => p.id),
+      );
+      setSelected(preselect.size > 0 ? preselect : new Set());
+    } else {
+      setDescription("");
+      setSelected(new Set());
+    }
+  };
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(projects.map((p) => p.id)));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    if (!selectedIssue) {
+      setFormError("Select a saved security update item");
+      return;
+    }
+    if (!description.trim()) {
+      setFormError("Problem description is required");
+      return;
+    }
+    if (selected.size === 0) {
+      setFormError("Select at least one affected project");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onAdd(selectedIssue, description, [...selected]);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="sec-modal-backdrop" onClick={onClose}>
+      <form
+        className="sec-modal sec-modal-add-issue"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => void submit(e)}
+      >
+        <div className="sec-modal-head">
+          <div>
+            <h2>Add Issue to Cycle</h2>
+            <p>Choose a saved item and select all affected projects.</p>
+          </div>
+          <button type="button" className="sec-modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <label className="sec-field">
+          <span>Saved Security Update Item</span>
+          <select
+            value={issueId}
+            onChange={(e) => onSelectIssue(e.target.value)}
+            aria-label="Saved Security Update Item"
+          >
+            <option value="">Select saved item…</option>
+            {available.map((issue) => (
+              <option key={issue.id} value={issue.id}>
+                {issue.title}
+                {issue.oem_request_id ? ` (${issue.oem_request_id})` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="sec-field">
+          <span>Problem description *</span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            placeholder="Select a saved item or enter the description…"
+            required
+          />
+        </label>
+
+        <div className="sec-projects-picker">
+          <div className="sec-projects-picker-head">
+            <span>
+              Affected projects *{" "}
+              <span className="sec-muted">
+                Selected {selected.size} of {projects.length}
+              </span>
+            </span>
+            <button type="button" className="sec-select-all-link" onClick={selectAll}>
+              Select all
+            </button>
+          </div>
+          <ul className="sec-project-checklist sec-project-checklist-2col">
+            {projects.length === 0 ? (
+              <li className="sec-muted">No projects in this cycle</li>
+            ) : (
+              projects.map((p) => (
+                <li key={p.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(p.id)}
+                      onChange={() => toggle(p.id)}
+                    />
+                    <span className="sec-check-name">{p.name}</span>
+                    {p.blurb ? <span className="sec-check-blurb">{p.blurb}</span> : null}
+                  </label>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+
+        {available.length === 0 ? (
+          <p className="sec-muted">
+            No unused saved items — create one under Issue Summary, or all are already in this cycle.
+          </p>
+        ) : null}
+        {formError ? <p className="sec-error">{formError}</p> : null}
+
+        <div className="sec-modal-actions">
+          <button type="button" className="sec-btn-ghost" onClick={onClose} disabled={submitting || busy}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="sec-btn-primary"
+            disabled={submitting || busy || available.length === 0}
+          >
+            <span aria-hidden="true">+</span> Add Issue
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

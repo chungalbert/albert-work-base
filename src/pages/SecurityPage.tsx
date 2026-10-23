@@ -385,6 +385,24 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               profileName={profileName}
               onBack={closeCycleDetail}
               onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
+              onLinkIssue={async (issueId, projectIds) => {
+                const names = new Map(visibleProjects.map((p) => [p.id, p.name]));
+                for (const r of snap?.roster.filter((x) => x.cycle_id === detailCycle.id) ?? []) {
+                  names.set(r.project_id, r.project_name);
+                }
+                const updated = await runSave(() =>
+                  securityStore.linkIssueToCycle(issueId, detailCycle.id, projectIds, names),
+                );
+                setSnap((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        issues: prev.issues.map((i) => (i.id === updated.id ? updated : i)),
+                      }
+                    : prev,
+                );
+                return updated;
+              }}
               onSave={async (doc) => {
                 const { saved, rosterUpdates } = await runSave(async () => {
                   const savedDoc = await securityStore.saveCycleDetail(doc);
@@ -481,25 +499,49 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         <IssueModal
           mode={issueModal.mode}
           issue={issueModal.issue}
-          cycles={cycles}
-          projects={visibleProjects}
           onClose={() => setIssueModal(null)}
           onSave={async (input) => {
             setError("");
             try {
               await runSave(async () => {
                 if (issueModal.mode === "edit" && issueModal.issue) {
-                  await securityStore.updateIssue(issueModal.issue.id, input);
+                  const prev = issueModal.issue;
+                  await securityStore.updateIssue(prev.id, {
+                    ...input,
+                    cycle_ids: prev.cycle_ids,
+                    project_ids: prev.project_ids,
+                    project_names: prev.project_names,
+                  });
                 } else {
                   await securityStore.createIssue(input);
                 }
               });
               setIssueModal(null);
               await refresh();
+              if (detailCycleId) {
+                const doc = await securityStore.loadCycleDetail(detailCycleId);
+                setDetailDoc(doc);
+              }
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
+              throw err;
             }
           }}
+          onDelete={
+            issueModal.mode === "edit" && issueModal.issue
+              ? async () => {
+                  setError("");
+                  const id = issueModal.issue!.id;
+                  await runSave(() => securityStore.deleteIssue(id));
+                  setIssueModal(null);
+                  await refresh();
+                  if (detailCycleId) {
+                    const doc = await securityStore.loadCycleDetail(detailCycleId);
+                    setDetailDoc(doc);
+                  }
+                }
+              : undefined
+          }
         />
       )}
     </div>
@@ -1107,6 +1149,12 @@ function IssueSummaryPanel({
                     <dd>{issue.detail}</dd>
                   </div>
                 ) : null}
+                {issue.reference_path ? (
+                  <div className="sec-issue-reference">
+                    <dt>Reference</dt>
+                    <dd>{issue.reference_path}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Cycles</dt>
                   <dd className="sec-issue-cycles">
@@ -1420,50 +1468,28 @@ function CycleFormModal({
 function IssueModal({
   mode,
   issue,
-  cycles,
-  projects,
   onClose,
   onSave,
+  onDelete,
 }: {
   mode: "create" | "edit";
   issue?: SecurityIssue;
-  cycles: SecurityCycle[];
-  projects: { id: string; name: string }[];
   onClose: () => void;
   onSave: (input: {
     title: string;
     oem_request_id?: string;
     detail?: string;
-    cycle_ids?: string[];
-    project_ids?: string[];
-    project_names?: string;
+    reference_path?: string;
   }) => Promise<void>;
+  onDelete?: () => Promise<void>;
 }) {
+  const isEdit = mode === "edit";
   const [title, setTitle] = useState(issue?.title ?? "");
   const [oem, setOem] = useState(issue?.oem_request_id ?? "");
   const [detail, setDetail] = useState(issue?.detail ?? "");
-  const [cycleIds, setCycleIds] = useState<Set<string>>(new Set(issue?.cycle_ids ?? []));
-  const [projectIds, setProjectIds] = useState<Set<string>>(new Set(issue?.project_ids ?? []));
+  const [referencePath, setReferencePath] = useState(issue?.reference_path ?? "");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
-
-  const toggleCycle = (id: string) => {
-    setCycleIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleProject = (id: string) => {
-    setProjectIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1474,15 +1500,28 @@ function IssueModal({
     setBusy(true);
     setFormError("");
     try {
-      const selectedProjects = projects.filter((p) => projectIds.has(p.id));
       await onSave({
         title,
         oem_request_id: oem,
         detail,
-        cycle_ids: [...cycleIds],
-        project_ids: selectedProjects.map((p) => p.id),
-        project_names: selectedProjects.map((p) => p.name).join(", "),
+        reference_path: referencePath,
       });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    if (!window.confirm("Delete this security update item? It will be removed from linked cycles.")) {
+      return;
+    }
+    setBusy(true);
+    setFormError("");
+    try {
+      await onDelete();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1492,11 +1531,19 @@ function IssueModal({
 
   return (
     <div className="sec-modal-backdrop" onClick={onClose}>
-      <form className="sec-modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => void submit(e)}>
+      <form
+        className="sec-modal sec-modal-issue"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => void submit(e)}
+      >
         <div className="sec-modal-head">
           <div>
-            <h2>{mode === "edit" ? "Edit security update item" : "Add security update item"}</h2>
-            <p>Reuse the same item across any cycle.</p>
+            <h2>{isEdit ? "Edit Security Update Item" : "Add Security Update Item"}</h2>
+            <p>
+              {isEdit
+                ? "Changes are synchronized to every linked cycle."
+                : "Create once, then reuse in any cycle via + New item."}
+            </p>
           </div>
           <button type="button" className="sec-modal-close" onClick={onClose} aria-label="Close">
             ×
@@ -1505,57 +1552,55 @@ function IssueModal({
 
         <label className="sec-field">
           <span>Title *</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
         </label>
         <label className="sec-field">
           <span>OEM Request ID</span>
           <input value={oem} onChange={(e) => setOem(e.target.value)} />
         </label>
         <label className="sec-field">
-          <span>Detail</span>
+          <span>Issue Details (Optional)</span>
           <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} />
         </label>
-
-        <fieldset className="sec-fieldset">
-          <legend>Cycles</legend>
-          <div className="sec-check-grid">
-            {cycles.map((c) => (
-              <label key={c.id}>
-                <input
-                  type="checkbox"
-                  checked={cycleIds.has(c.id)}
-                  onChange={() => toggleCycle(c.id)}
-                />
-                {c.quarter}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="sec-fieldset">
-          <legend>Projects</legend>
-          <div className="sec-check-grid sec-check-grid-scroll">
-            {projects.map((p) => (
-              <label key={p.id}>
-                <input
-                  type="checkbox"
-                  checked={projectIds.has(p.id)}
-                  onChange={() => toggleProject(p.id)}
-                />
-                {p.name}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <label className="sec-field">
+          <span>Reference Path (Optional)</span>
+          <input
+            value={referencePath}
+            onChange={(e) => setReferencePath(e.target.value)}
+            placeholder={"https://... or \\\\server\\share\\..."}
+          />
+        </label>
 
         {formError ? <p className="sec-error">{formError}</p> : null}
 
-        <div className="sec-modal-actions">
-          <button type="button" className="sec-btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" className="sec-btn-primary" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
+        <div className={`sec-modal-actions${isEdit && onDelete ? " sec-modal-actions-split" : ""}`}>
+          {isEdit && onDelete ? (
+            <button
+              type="button"
+              className="sec-btn-danger"
+              onClick={() => void handleDelete()}
+              disabled={busy}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4h6v2" />
+              </svg>
+              Delete
+            </button>
+          ) : (
+            <button type="button" className="sec-btn-ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+          )}
+          <button type="submit" className="sec-btn-primary sec-btn-save-changes" disabled={busy}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            {busy ? "Saving…" : isEdit ? "Save changes" : "Save"}
           </button>
         </div>
       </form>

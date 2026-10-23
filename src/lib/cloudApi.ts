@@ -125,6 +125,7 @@ function mapSecurityIssue(row: Record<string, unknown>): SecurityIssue {
     title: String(row.title ?? ""),
     oem_request_id: String(row.oem_request_id ?? ""),
     detail: String(row.detail ?? ""),
+    reference_path: String(row.reference_path ?? ""),
     cycle_ids: asJsonStringArray(row.cycle_ids),
     project_ids: asJsonStringArray(row.project_ids),
     project_names: String(row.project_names ?? ""),
@@ -144,8 +145,10 @@ function mapSecurityCycleDetail(row: Record<string, unknown>): CycleDetailDoc {
     for (const [pid, v] of Object.entries(appliesRaw)) {
       applies[pid] = normalizeApplyCell(v);
     }
+    const issueId = String(o.issue_id ?? "").trim();
     return {
       id: String(o.id ?? `cdi-${i}`),
+      ...(issueId ? { issue_id: issueId } : {}),
       title: String(o.title ?? ""),
       detail: String(o.detail ?? ""),
       cycle_comment: String(o.cycle_comment ?? ""),
@@ -1557,42 +1560,61 @@ export const cloudApi = {
   async createSecurityIssue(input: SecurityIssueInput): Promise<SecurityIssue> {
     const me = await cloudApi.currentUser();
     const now = new Date().toISOString();
-    const { data, error } = await sb()
-      .from("security_issues")
-      .insert({
-        title: input.title.trim(),
-        oem_request_id: (input.oem_request_id ?? "").trim(),
-        detail: (input.detail ?? "").trim(),
-        cycle_ids: input.cycle_ids ?? [],
-        project_ids: input.project_ids ?? [],
-        project_names: (input.project_names ?? "").trim(),
-        created_by: me?.id ?? null,
-        created_at: now,
-        updated_at: now,
-      })
-      .select()
-      .single();
+    const payload: Record<string, unknown> = {
+      title: input.title.trim(),
+      oem_request_id: (input.oem_request_id ?? "").trim(),
+      detail: (input.detail ?? "").trim(),
+      reference_path: (input.reference_path ?? "").trim(),
+      cycle_ids: input.cycle_ids ?? [],
+      project_ids: input.project_ids ?? [],
+      project_names: (input.project_names ?? "").trim(),
+      created_by: me?.id ?? null,
+      created_at: now,
+      updated_at: now,
+    };
+    let { data, error } = await sb().from("security_issues").insert(payload).select().single();
+    // Older Neon schemas may lack reference_path — retry without it.
+    if (error && /reference_path/i.test(String(error.message ?? ""))) {
+      delete payload.reference_path;
+      ({ data, error } = await sb().from("security_issues").insert(payload).select().single());
+    }
     if (error) throw error;
     return mapSecurityIssue(data as Record<string, unknown>);
   },
 
   async updateSecurityIssue(id: string, input: SecurityIssueInput): Promise<SecurityIssue> {
-    const { data, error } = await sb()
+    const payload: Record<string, unknown> = {
+      title: input.title.trim(),
+      oem_request_id: (input.oem_request_id ?? "").trim(),
+      detail: (input.detail ?? "").trim(),
+      reference_path: (input.reference_path ?? "").trim(),
+      cycle_ids: input.cycle_ids ?? [],
+      project_ids: input.project_ids ?? [],
+      project_names: (input.project_names ?? "").trim(),
+      updated_at: new Date().toISOString(),
+    };
+    let { data, error } = await sb()
       .from("security_issues")
-      .update({
-        title: input.title.trim(),
-        oem_request_id: (input.oem_request_id ?? "").trim(),
-        detail: (input.detail ?? "").trim(),
-        cycle_ids: input.cycle_ids ?? [],
-        project_ids: input.project_ids ?? [],
-        project_names: (input.project_names ?? "").trim(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq("id", id)
       .select()
       .single();
+    if (error && /reference_path/i.test(String(error.message ?? ""))) {
+      delete payload.reference_path;
+      ({ data, error } = await sb()
+        .from("security_issues")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single());
+    }
     if (error) throw error;
     return mapSecurityIssue(data as Record<string, unknown>);
+  },
+
+  async deleteSecurityIssue(id: string): Promise<void> {
+    const { error } = await sb().from("security_issues").delete().eq("id", id);
+    if (error) throw error;
   },
 
   /** null when no row yet (first open). */

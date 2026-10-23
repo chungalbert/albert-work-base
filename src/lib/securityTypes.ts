@@ -50,6 +50,8 @@ export type SecurityIssue = {
   title: string;
   oem_request_id: string;
   detail: string;
+  /** Optional URL or UNC path shown on Issue Summary cards. */
+  reference_path: string;
   cycle_ids: string[];
   project_ids: string[];
   /** Display codes (comma-joined), kept for roster-less projects. */
@@ -84,6 +86,7 @@ export type SecurityIssueInput = {
   title: string;
   oem_request_id?: string;
   detail?: string;
+  reference_path?: string;
   cycle_ids?: string[];
   project_ids?: string[];
   project_names?: string;

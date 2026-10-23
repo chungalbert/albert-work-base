@@ -41,6 +41,8 @@ create table if not exists public.security_issues (
   title text not null,
   oem_request_id text not null default '',
   detail text not null default '',
+  /** URL or UNC path — see neon/security-issue-reference.sql for existing DBs. */
+  reference_path text not null default '',
   cycle_ids jsonb not null default '[]'::jsonb,
   project_ids jsonb not null default '[]'::jsonb,
   project_names text not null default '',

@@ -97,8 +97,13 @@ function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null
         for (const [pid, v] of Object.entries(appliesRaw)) {
           applies[pid] = normalizeApplyCell(v);
         }
+        const issueIdRaw =
+          item && typeof item === "object" && "issue_id" in item
+            ? String((item as { issue_id?: unknown }).issue_id ?? "").trim()
+            : "";
         return {
           id: String(item?.id || newDetailItemId()),
+          ...(issueIdRaw ? { issue_id: issueIdRaw } : {}),
           title: String(item?.title ?? ""),
           detail: String(item?.detail ?? ""),
           cycle_comment: String(item?.cycle_comment ?? ""),
@@ -139,8 +144,9 @@ export function seedDetailFromIssues(
     }
     return {
       id: newDetailItemId(),
+      issue_id: issue.id,
       title: issue.title,
-      detail: issue.detail || issue.oem_request_id || "",
+      detail: issue.reference_path || issue.detail || issue.oem_request_id || "",
       cycle_comment: "",
       applies,
       sort_order: i,
@@ -307,6 +313,7 @@ function seedSnapshot(): SecuritySnapshot {
       title,
       oem_request_id: title.startsWith("CP2026") ? "CP20260625_0019" : "",
       detail: i === 2 ? "Commercial Vantage security package" : "",
+      reference_path: "",
       cycle_ids,
       project_ids: q4.project_ids.slice(0, 6),
       project_names: projectNames.slice(0, 8).join(", "),
@@ -342,7 +349,10 @@ function loadLocal(): SecuritySnapshot {
     return {
       cycles,
       roster: parsed.roster ?? [],
-      issues: parsed.issues ?? [],
+      issues: (parsed.issues ?? []).map((issue) => ({
+        ...issue,
+        reference_path: String(issue.reference_path ?? ""),
+      })),
     };
   } catch {
     return seedSnapshot();
@@ -656,6 +666,7 @@ export const securityStore = {
       title,
       oem_request_id: (input.oem_request_id ?? "").trim(),
       detail: (input.detail ?? "").trim(),
+      reference_path: (input.reference_path ?? "").trim(),
       cycle_ids: input.cycle_ids ?? [],
       project_ids: input.project_ids ?? [],
       project_names: (input.project_names ?? "").trim(),
@@ -667,12 +678,19 @@ export const securityStore = {
     return issue;
   },
 
-  async updateIssue(id: string, input: SecurityIssueInput): Promise<SecurityIssue> {
+  async updateIssue(
+    id: string,
+    input: SecurityIssueInput,
+    opts?: { syncLinkedCycles?: boolean },
+  ): Promise<SecurityIssue> {
     const title = input.title.trim();
     if (!title) throw new Error("Title is required");
+    const syncLinked = opts?.syncLinkedCycles !== false;
     if (await probeCloud()) {
       try {
-        return await cloudApi.updateSecurityIssue(id, input);
+        const updated = await cloudApi.updateSecurityIssue(id, input);
+        if (syncLinked) await securityStore.syncIssueToLinkedCycles(updated);
+        return updated;
       } catch (err) {
         if (!isSecurityTableMissing(err)) throw err;
         cloudOk = false;
@@ -687,6 +705,7 @@ export const securityStore = {
       title,
       oem_request_id: (input.oem_request_id ?? prev.oem_request_id).trim(),
       detail: (input.detail ?? prev.detail).trim(),
+      reference_path: (input.reference_path ?? prev.reference_path).trim(),
       cycle_ids: input.cycle_ids ?? prev.cycle_ids,
       project_ids: input.project_ids ?? prev.project_ids,
       project_names: (input.project_names ?? prev.project_names).trim(),
@@ -694,7 +713,113 @@ export const securityStore = {
     };
     snap.issues[idx] = next;
     saveLocal(snap);
+    if (syncLinked) await securityStore.syncIssueToLinkedCycles(next);
     return next;
+  },
+
+  /** Remove a saved Issue Summary item and strip matching matrix rows from linked cycles. */
+  async deleteIssue(id: string): Promise<void> {
+    if (await probeCloud()) {
+      try {
+        const snap = await securityStore.load();
+        const issue = snap.issues.find((i) => i.id === id);
+        await cloudApi.deleteSecurityIssue(id);
+        if (issue) await securityStore.removeIssueFromLinkedCycles(issue);
+        return;
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const snap = loadLocal();
+    const issue = snap.issues.find((i) => i.id === id);
+    if (!issue) throw new Error("Issue not found");
+    snap.issues = snap.issues.filter((i) => i.id !== id);
+    saveLocal(snap);
+    await securityStore.removeIssueFromLinkedCycles(issue);
+  },
+
+  /**
+   * Link a saved Issue Summary item into a cycle (cycle_ids + merge projects).
+   * Matrix row is added by the cycle detail UI draft / Save All.
+   */
+  async linkIssueToCycle(
+    issueId: string,
+    cycleId: string,
+    projectIds: string[],
+    projectNamesById: Map<string, string>,
+  ): Promise<SecurityIssue> {
+    const snap = await securityStore.load();
+    const issue = snap.issues.find((i) => i.id === issueId);
+    if (!issue) throw new Error("Issue not found");
+    const cycle_ids = issue.cycle_ids.includes(cycleId)
+      ? issue.cycle_ids
+      : [...issue.cycle_ids, cycleId];
+    const mergedIds = [...issue.project_ids];
+    for (const pid of projectIds) {
+      if (!mergedIds.includes(pid)) mergedIds.push(pid);
+    }
+    const nameSet = new Set(
+      issue.project_names
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    for (const pid of mergedIds) {
+      const n = projectNamesById.get(pid);
+      if (n) nameSet.add(n);
+    }
+    return securityStore.updateIssue(
+      issueId,
+      {
+        title: issue.title,
+        oem_request_id: issue.oem_request_id,
+        detail: issue.detail,
+        reference_path: issue.reference_path,
+        cycle_ids,
+        project_ids: mergedIds,
+        project_names: [...nameSet].join(", "),
+      },
+      { syncLinkedCycles: false },
+    );
+  },
+
+  /** Push title / detail / reference into cycle detail rows that reference this issue. */
+  async syncIssueToLinkedCycles(issue: SecurityIssue): Promise<void> {
+    const detailLine = issue.reference_path || issue.detail || issue.oem_request_id || "";
+    for (const cycleId of issue.cycle_ids) {
+      const doc = await securityStore.loadCycleDetail(cycleId);
+      if (!doc || doc.items.length === 0) continue;
+      let changed = false;
+      const items = doc.items.map((it) => {
+        const linked =
+          it.issue_id === issue.id || (!it.issue_id && it.title.trim() === issue.title.trim());
+        if (!linked) return it;
+        changed = true;
+        return {
+          ...it,
+          issue_id: issue.id,
+          title: issue.title,
+          detail: detailLine || it.detail,
+        };
+      });
+      if (changed) {
+        await securityStore.saveCycleDetail({ ...doc, items });
+      }
+    }
+  },
+
+  async removeIssueFromLinkedCycles(issue: SecurityIssue): Promise<void> {
+    for (const cycleId of issue.cycle_ids) {
+      const doc = await securityStore.loadCycleDetail(cycleId);
+      if (!doc || doc.items.length === 0) continue;
+      const nextItems = doc.items
+        .filter((it) => it.issue_id !== issue.id)
+        .map((it, i) => ({ ...it, sort_order: i }));
+      if (nextItems.length !== doc.items.length) {
+        await securityStore.saveCycleDetail({ ...doc, items: nextItems });
+      }
+    }
   },
 
   /**
