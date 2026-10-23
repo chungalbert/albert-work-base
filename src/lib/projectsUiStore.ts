@@ -61,19 +61,38 @@ export const PROJECT_STANDARD_COLUMNS = [
     label: "PROJECT LEADER",
     id: "00000000-0000-4000-8000-0000000000d9",
   },
+  {
+    key: "tpe_owner",
+    /**
+     * Distinct from PROJECT LEADER (`projects.owner`).
+     * Neon field: `projects.tpe_owner`. Legacy UI label was "TPE OWNER".
+     */
+    label: "Owner",
+    id: "00000000-0000-4000-8000-0000000000da",
+  },
 ] as const;
 
 export type ProjectStandardKey = (typeof PROJECT_STANDARD_COLUMNS)[number]["key"];
 
 /**
- * Labels that map to the standard `owner` / Project Leader column
- * (legacy UI used OWNER; users also say Project Leader).
+ * Labels that map to PROJECT LEADER (`projects.owner`).
+ * Do NOT include bare "OWNER" — that maps to the separate Owner (`tpe_owner`) column.
  */
 const PROJECT_LEADER_LABEL_ALIASES = new Set([
-  "OWNER",
   "PROJECT LEADER",
   "PROJECT_LEADER",
   "PROJECTLEADER",
+]);
+
+/**
+ * Labels that map to Owner (`projects.tpe_owner`).
+ * Includes legacy "TPE OWNER" and bare "OWNER" (post–#84 PROJECT LEADER rename).
+ */
+const PROJECT_OWNER_LABEL_ALIASES = new Set([
+  "OWNER",
+  "TPE OWNER",
+  "TPE_OWNER",
+  "TPEOWNER",
 ]);
 
 /** @deprecated Prefer PROJECT_LOCKED_COLUMN + PROJECT_STANDARD_COLUMNS; kept for callers that list all field keys. */
@@ -102,18 +121,30 @@ export function isProjectLeaderColumnLabel(label: string): boolean {
   return PROJECT_LEADER_LABEL_ALIASES.has(normalizeLabel(label));
 }
 
+export function isProjectOwnerColumnLabel(label: string): boolean {
+  return PROJECT_OWNER_LABEL_ALIASES.has(normalizeLabel(label));
+}
+
 export function findStandardProjectColumn(
   labelOrId: string,
 ): (typeof PROJECT_STANDARD_COLUMNS)[number] | undefined {
   const trimmed = labelOrId.trim();
   if (!trimmed) return undefined;
   const upper = normalizeLabel(trimmed);
-  if (PROJECT_LEADER_LABEL_ALIASES.has(upper) || trimmed === "owner") {
+
+  // Prefer stable id / key matches so legacy labels on d9 stay PROJECT LEADER.
+  const byIdOrKey = PROJECT_STANDARD_COLUMNS.find(
+    (col) => col.id === trimmed || col.key === trimmed,
+  );
+  if (byIdOrKey) return byIdOrKey;
+
+  if (PROJECT_LEADER_LABEL_ALIASES.has(upper)) {
     return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "owner");
   }
-  return PROJECT_STANDARD_COLUMNS.find(
-    (col) => col.id === trimmed || col.key === trimmed || normalizeLabel(col.label) === upper,
-  );
+  if (PROJECT_OWNER_LABEL_ALIASES.has(upper) || normalizeLabel("Owner") === upper) {
+    return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "tpe_owner");
+  }
+  return PROJECT_STANDARD_COLUMNS.find((col) => normalizeLabel(col.label) === upper);
 }
 
 export function isStandardProjectColumnId(columnId: string): boolean {
@@ -129,6 +160,58 @@ export function defaultStandardProjectColumns(): ProjectColumn[] {
   return PROJECT_STANDARD_COLUMNS.map(({ id, label }) => ({ id, label }));
 }
 
+/**
+ * Normalize / place Owner beside PROJECT LEADER.
+ * - Always rewrites legacy TPE OWNER / OWNER labels to the standard Owner def.
+ * - When `insertIfMissing`, also inserts Owner after PROJECT LEADER (first seed / SQL-backed ensure).
+ */
+export function ensureOwnerBesideLeader(
+  columns: ProjectColumn[],
+  options?: { insertIfMissing?: boolean },
+): {
+  columns: ProjectColumn[];
+  changed: boolean;
+} {
+  const insertIfMissing = options?.insertIfMissing ?? false;
+  const ownerStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "tpe_owner");
+  const leaderStd = PROJECT_STANDARD_COLUMNS.find((c) => c.key === "owner");
+  if (!ownerStd || !leaderStd) return { columns, changed: false };
+
+  let changed = false;
+  const next = columns.map((col) => {
+    const std = findStandardProjectColumn(col.id) ?? findStandardProjectColumn(col.label);
+    if (std?.key === "tpe_owner" && (col.id !== ownerStd.id || col.label !== ownerStd.label)) {
+      changed = true;
+      return { id: ownerStd.id, label: ownerStd.label };
+    }
+    if (std?.key === "owner" && (col.id !== leaderStd.id || col.label !== leaderStd.label)) {
+      changed = true;
+      return { id: leaderStd.id, label: leaderStd.label };
+    }
+    return col;
+  });
+
+  const ownerIdx = next.findIndex((c) => c.id === ownerStd.id);
+  if (ownerIdx >= 0) {
+    const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
+    if (leaderIdx >= 0 && ownerIdx !== leaderIdx + 1) {
+      const [ownerCol] = next.splice(ownerIdx, 1);
+      const insertAt = next.findIndex((c) => c.id === leaderStd.id) + 1;
+      next.splice(insertAt, 0, ownerCol);
+      changed = true;
+    }
+    return { columns: next, changed };
+  }
+
+  if (!insertIfMissing) return { columns: next, changed };
+
+  const leaderIdx = next.findIndex((c) => c.id === leaderStd.id);
+  const ownerCol = { id: ownerStd.id, label: ownerStd.label };
+  if (leaderIdx >= 0) next.splice(leaderIdx + 1, 0, ownerCol);
+  else next.push(ownerCol);
+  return { columns: next, changed: true };
+}
+
 export type ProjectFieldPatch = {
   name?: string;
   description?: string;
@@ -141,6 +224,7 @@ export type ProjectFieldPatch = {
   security_update?: string;
   talent_policy?: string;
   owner?: string;
+  tpe_owner?: string;
   custom?: Record<string, string>;
 };
 
@@ -185,7 +269,8 @@ function normalizeManagedColumns(columns: ProjectColumn[]): ProjectColumn[] {
   return columns
     .filter((c) => !isReservedProjectColumnLabel(c.label))
     .map((c) => {
-      const std = findStandardProjectColumn(c.label) ?? findStandardProjectColumn(c.id);
+      // Prefer id so legacy label "OWNER" on d9 stays PROJECT LEADER, not Owner.
+      const std = findStandardProjectColumn(c.id) ?? findStandardProjectColumn(c.label);
       if (std) return { id: std.id, label: std.label };
       return c;
     });
@@ -193,7 +278,8 @@ function normalizeManagedColumns(columns: ProjectColumn[]): ProjectColumn[] {
 
 /**
  * One-time: ensure former builtins exist as removable defs (stable ids).
- * After `alreadySeeded`, Admin removals persist — missing standards are not re-inserted.
+ * After `alreadySeeded`, Admin removals persist — missing standards are not re-inserted,
+ * except Owner (`tpe_owner`) which is ensured beside PROJECT LEADER (legacy TPE OWNER).
  */
 export function seedStandardProjectColumns(
   columns: ProjectColumn[],
@@ -201,10 +287,14 @@ export function seedStandardProjectColumns(
 ): { columns: ProjectColumn[]; changed: boolean; seeded: boolean } {
   if (alreadySeeded) {
     const normalized = normalizeManagedColumns(columns);
+    // Rewrite legacy TPE OWNER → Owner; do not force-reinsert if Admin removed it
+    // (Neon SQL / first seed inserts when missing).
+    const ensured = ensureOwnerBesideLeader(normalized, { insertIfMissing: false });
     const changed =
+      ensured.changed ||
       normalized.length !== columns.length ||
       normalized.some((c, i) => c.id !== columns[i]?.id || c.label !== columns[i]?.label);
-    return { columns: normalized, changed, seeded: true };
+    return { columns: ensured.columns, changed, seeded: true };
   }
 
   const next: ProjectColumn[] = [];
@@ -278,6 +368,7 @@ function migrateOwnerCustomIntoField(state: ProjectsUiState): boolean {
   const std = findStandardProjectColumn("owner");
   if (!std) return false;
   for (const col of state.columns) {
+    // Only migrate by Project Leader id / explicit leader labels (not bare "OWNER").
     if (!isProjectLeaderColumnLabel(col.label) && col.id !== std.id) continue;
     if (col.id === std.id && normalizeLabel(col.label) === normalizeLabel(std.label)) continue;
     for (const overlay of Object.values(state.overlays)) {
@@ -302,9 +393,45 @@ function migrateOwnerCustomIntoField(state: ProjectsUiState): boolean {
   return changed;
 }
 
+/** Promote legacy TPE OWNER / Owner custom cells into `tpe_owner`. */
+function migrateTpeOwnerCustomIntoField(state: ProjectsUiState): boolean {
+  let changed = false;
+  const std = findStandardProjectColumn("tpe_owner");
+  if (!std) return false;
+  for (const col of state.columns) {
+    const isOwnerCol =
+      col.id === std.id || isProjectOwnerColumnLabel(col.label) || col.id === "tpe_owner";
+    if (!isOwnerCol) continue;
+    for (const overlay of Object.values(state.overlays)) {
+      const fromCustom = overlay.custom?.[col.id];
+      if (
+        fromCustom != null &&
+        fromCustom !== "" &&
+        (overlay.tpe_owner == null || overlay.tpe_owner === "")
+      ) {
+        overlay.tpe_owner = fromCustom;
+        changed = true;
+      }
+      if (overlay.custom && col.id in overlay.custom && col.id !== std.id) {
+        const next = { ...overlay.custom };
+        delete next[col.id];
+        overlay.custom = next;
+        changed = true;
+      }
+    }
+    if (col.id !== std.id || col.label !== std.label) {
+      col.id = std.id;
+      col.label = std.label;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function prepareState(state: ProjectsUiState): boolean {
   let changed = scrubLockedCustomColumns(state);
   if (migrateOwnerCustomIntoField(state)) changed = true;
+  if (migrateTpeOwnerCustomIntoField(state)) changed = true;
   const ensured = seedStandardProjectColumns(state.columns, localColumnsSeeded());
   if (ensured.changed) {
     state.columns = ensured.columns;
@@ -454,6 +581,7 @@ export const projectsUiStore = {
       security_update: overlay.security_update ?? project.security_update ?? "",
       talent_policy: overlay.talent_policy ?? project.talent_policy ?? "",
       owner: overlay.owner ?? project.owner ?? "",
+      tpe_owner: overlay.tpe_owner ?? project.tpe_owner ?? "",
       custom: { ...(project.custom ?? {}), ...(overlay.custom ?? {}) },
     };
   },
@@ -478,6 +606,7 @@ export const projectsUiStore = {
     if (patch.security_update !== undefined) next.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) next.talent_policy = patch.talent_policy.trim();
     if (patch.owner !== undefined) next.owner = patch.owner.trim();
+    if (patch.tpe_owner !== undefined) next.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       next.custom = { ...(prev.custom ?? {}), ...patch.custom };
     }
