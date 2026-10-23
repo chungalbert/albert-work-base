@@ -1,4 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  EMPTY_ISSUE_COLUMN_FILTERS,
+  IssueColumnFilter,
+  type IssueColumnFilters,
+} from "../components/IssueColumnFilter";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import {
@@ -34,6 +39,12 @@ import { useStore } from "../context/StoreContext";
 import { useSaveStatus } from "../lib/useSaveStatus";
 
 type StatusFilter = "all" | TaskStatus;
+
+function compareTasksStable(a: Task, b: Task): number {
+  const byCreated = (a.created_at ?? "").localeCompare(b.created_at ?? "");
+  if (byCreated !== 0) return byCreated;
+  return a.id.localeCompare(b.id);
+}
 
 function columnsSignature(columns: ProjectColumn[]): string {
   return columns.map((c) => `${c.id}:${c.label}`).join("|");
@@ -183,6 +194,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [newStatus, setNewStatus] = useState<TaskStatus>("opening");
   const [analyzed, setAnalyzed] = useState("");
   const [showNewIssue, setShowNewIssue] = useState(false);
+  const [colFilters, setColFilters] = useState<IssueColumnFilters>(EMPTY_ISSUE_COLUMN_FILTERS);
+
+  const setColFilter = <K extends keyof IssueColumnFilters>(key: K, value: IssueColumnFilters[K]) => {
+    setColFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   /** Match Personnel: Neon overlays may set personnel_role Admin while raw is_admin lags. */
   const isAdmin = Boolean(user && normalizePersonnelRole(user) === "Admin");
@@ -425,6 +441,14 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const detailTasks = useMemo(() => {
     if (!project) return [] as Task[];
     const q = query.trim().toLowerCase();
+    const noQ = colFilters.no.trim().toLowerCase();
+    const nameQ = colFilters.name.trim().toLowerCase();
+    const ownerQ = colFilters.owner.trim().toLowerCase();
+    const analysisQ = colFilters.analysis.trim().toLowerCase();
+    const stateQ = colFilters.state.trim();
+    const startQ = colFilters.start.trim();
+    const deadlineQ = colFilters.deadline.trim();
+
     return allTasks
       .filter((t) => t.project_id === project.id)
       .filter((t) => (statusFilter === "all" ? true : t.status === statusFilter))
@@ -432,8 +456,38 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         if (!q) return true;
         const hay = [t.title, t.note, t.analyzed, nameOf(t.assignee_id), shortId(t.id)].join(" ").toLowerCase();
         return hay.includes(q);
-      });
-  }, [allTasks, project, statusFilter, query, profiles]);
+      })
+      .filter((t) => {
+        if (noQ && !shortId(t.id).toLowerCase().includes(noQ) && !t.id.toLowerCase().includes(noQ)) {
+          return false;
+        }
+        if (stateQ && t.status !== stateQ) return false;
+        if (nameQ && !t.title.toLowerCase().includes(nameQ)) return false;
+        if (ownerQ) {
+          if (ownerQ === "unassigned") {
+            if (t.assignee_id) return false;
+          } else {
+            const ownerName = nameOf(t.assignee_id).toLowerCase();
+            if (ownerName !== ownerQ.toLowerCase()) return false;
+          }
+        }
+        if (startQ && t.start_date !== startQ) return false;
+        if (deadlineQ && t.due_date !== deadlineQ) return false;
+        if (analysisQ) {
+          const text = [
+            t.analyzed,
+            ...(t.analyzed_notes ?? []).map((n) => n.text),
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!text.includes(analysisQ)) return false;
+        }
+        return true;
+      })
+      /* Stable order: creation/id — field edits must not reshuffle rows. */
+      .slice()
+      .sort(compareTasksStable);
+  }, [allTasks, project, statusFilter, query, profiles, colFilters]);
 
   const counts = useMemo(() => {
     const tasks = project ? allTasks.filter((t) => t.project_id === project.id) : [];
@@ -460,6 +514,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setMode("detail");
     setStatusFilter("all");
     setQuery("");
+    setColFilters(EMPTY_ISSUE_COLUMN_FILTERS);
     setMoreOpen(false);
     setShowNewIssue(false);
   };
@@ -468,6 +523,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setMode("list");
     setQuery("");
     setStatusFilter("all");
+    setColFilters(EMPTY_ISSUE_COLUMN_FILTERS);
     setShowNewIssue(false);
     setMoreOpen(false);
   };
@@ -1100,13 +1156,77 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
             <table className="pi-table pi-issue-table">
               <thead>
                 <tr>
-                  <th>NO.</th>
-                  <th>STATE</th>
-                  <th>NAME</th>
-                  <th>OWNER</th>
-                  <th>START</th>
-                  <th>DEADLINE</th>
-                  <th>ANALYSIS</th>
+                  <th>
+                    <IssueColumnFilter
+                      label="NO."
+                      colKey="no"
+                      value={colFilters.no}
+                      onChange={(v) => setColFilter("no", v)}
+                      placeholder="Contains…"
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="STATE"
+                      colKey="state"
+                      value={colFilters.state}
+                      onChange={(v) => setColFilter("state", v)}
+                      inputType="select"
+                      options={TASK_STATUSES.map((s) => ({
+                        value: s.id,
+                        label: s.label.toUpperCase(),
+                      }))}
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="NAME"
+                      colKey="name"
+                      value={colFilters.name}
+                      onChange={(v) => setColFilter("name", v)}
+                      placeholder="Contains…"
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="OWNER"
+                      colKey="owner"
+                      value={colFilters.owner}
+                      onChange={(v) => setColFilter("owner", v)}
+                      inputType="select"
+                      options={[
+                        { value: "unassigned", label: "Unassigned" },
+                        ...people.map((p) => ({ value: p.display_name, label: p.display_name })),
+                      ]}
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="START"
+                      colKey="start"
+                      value={colFilters.start}
+                      onChange={(v) => setColFilter("start", v)}
+                      inputType="date"
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="DEADLINE"
+                      colKey="deadline"
+                      value={colFilters.deadline}
+                      onChange={(v) => setColFilter("deadline", v)}
+                      inputType="date"
+                    />
+                  </th>
+                  <th>
+                    <IssueColumnFilter
+                      label="ANALYSIS"
+                      colKey="analysis"
+                      value={colFilters.analysis}
+                      onChange={(v) => setColFilter("analysis", v)}
+                      placeholder="Contains…"
+                    />
+                  </th>
                   <th>ACTIONS</th>
                 </tr>
               </thead>

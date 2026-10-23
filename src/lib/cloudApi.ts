@@ -275,6 +275,7 @@ function normalizeTask(task: Task): Task {
     ...task,
     status: normalizeTaskStatus(task.status),
     note: task.note ?? "",
+    created_at: typeof task.created_at === "string" && task.created_at ? task.created_at : undefined,
     ...syncAnalyzedFields(normalizeAnalyzedNotes(task)),
   };
 }
@@ -1116,7 +1117,8 @@ export const cloudApi = {
       .from("tasks")
       .select("*")
       .eq("project_id", projectId)
-      .order("due_date");
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
     if (error) throw error;
     return (data as Task[]).map(normalizeTask);
   },
@@ -1139,7 +1141,11 @@ export const cloudApi = {
   },
 
   async allTasksForUser(): Promise<Task[]> {
-    const { data, error } = await sb().from("tasks").select("*");
+    const { data, error } = await sb()
+      .from("tasks")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
     if (error) throw error;
     return (data as Task[]).map(normalizeTask);
   },
