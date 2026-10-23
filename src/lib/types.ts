@@ -1,6 +1,6 @@
 export type Role = "leader" | "member";
 export const TASK_STATUSES = [
-  { id: "opening", label: "Opening" },
+  { id: "opening", label: "Open" },
   { id: "working", label: "Working" },
   { id: "closing", label: "Closing" },
   { id: "verify", label: "Verify" },
@@ -85,8 +85,19 @@ export function normalizeTaskStatus(status: string): TaskStatus {
   return "opening";
 }
 
+/** True for any non-closed status (Open / Working / Closing). */
 export function isTaskOpen(status: string): boolean {
   return normalizeTaskStatus(status) !== "verify";
+}
+
+/** True only for the Open (opening) status — not Working / Closing / Closed. */
+export function isTaskOpening(status: string): boolean {
+  return normalizeTaskStatus(status) === "opening";
+}
+
+/** True for Closed (verify). */
+export function isTaskClosed(status: string): boolean {
+  return normalizeTaskStatus(status) === "verify";
 }
 
 export const PERSONNEL_ROLES = ["Admin", "DM", "DL", "DE", "DQA", "PM", "SA"] as const;
