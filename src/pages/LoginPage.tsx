@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { DEFAULT_PASSWORD } from "../lib/util";
+import { DEFAULT_PASSWORD, LANDING_FOOTER_LABEL } from "../lib/util";
 
 export function LoginPage() {
   const { signIn } = useAuth();
@@ -127,7 +127,7 @@ export function LoginPage() {
         </section>
       </main>
 
-      <footer className="site-footer">KSSW · V1</footer>
+      <footer className="site-footer">{LANDING_FOOTER_LABEL}</footer>
     </div>
   );
 }
