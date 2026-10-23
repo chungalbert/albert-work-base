@@ -191,11 +191,22 @@ function isProjectColumnsMetaProject(project: Pick<Project, "name">): boolean {
   return project.name === PROJECT_COLUMNS_META_NAME;
 }
 
+/** Legacy custom-column id for TPE OWNER before `projects.tpe_owner` existed. */
+const LEGACY_TPE_OWNER_COLUMN_ID = "713a0362-9c56-4be0-bd1c-4c3e912e334a";
+
 function normalizeProjectRow(row: Project): Project {
   const custom =
     row.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
-      ? (row.custom as Record<string, string>)
+      ? { ...(row.custom as Record<string, string>) }
       : {};
+  let tpe_owner = row.tpe_owner ?? "";
+  if (!tpe_owner.trim() && custom[LEGACY_TPE_OWNER_COLUMN_ID]?.trim()) {
+    tpe_owner = custom[LEGACY_TPE_OWNER_COLUMN_ID].trim();
+  }
+  // Prefer dedicated column; drop legacy custom key from the client view.
+  if (LEGACY_TPE_OWNER_COLUMN_ID in custom) {
+    delete custom[LEGACY_TPE_OWNER_COLUMN_ID];
+  }
   return {
     ...row,
     lenovo_name: row.lenovo_name ?? "",
@@ -207,6 +218,7 @@ function normalizeProjectRow(row: Project): Project {
     security_update: row.security_update ?? "",
     talent_policy: row.talent_policy ?? "",
     owner: row.owner ?? "",
+    tpe_owner,
     custom,
   };
 }
@@ -529,6 +541,7 @@ export const cloudApi = {
     if (patch.security_update !== undefined) updates.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) updates.talent_policy = patch.talent_policy.trim();
     if (patch.owner !== undefined) updates.owner = patch.owner.trim();
+    if (patch.tpe_owner !== undefined) updates.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       updates.custom = { ...(base.custom ?? {}), ...patch.custom };
     }

@@ -52,6 +52,7 @@ const PROJECT_SCHEMA_COLUMNS = [
   "security_update",
   "talent_policy",
   "owner",
+  "tpe_owner",
   "custom",
 ] as const;
 
@@ -154,6 +155,7 @@ function overlayHasValues(overlay: ProjectFieldPatch | undefined): boolean {
       overlay.security_update ||
       overlay.talent_policy ||
       overlay.owner ||
+      overlay.tpe_owner ||
       (overlay.custom && Object.keys(overlay.custom).length > 0),
   );
 }
@@ -225,6 +227,7 @@ async function maybeMigrateProjectsUiToCloud(): Promise<void> {
       "security_update",
       "talent_policy",
       "owner",
+      "tpe_owner",
     ] as const;
 
     const failedProjectIds = new Set<string>();

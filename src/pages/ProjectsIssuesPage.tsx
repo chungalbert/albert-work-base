@@ -55,6 +55,7 @@ function mergeProjectDraft(project: Project, patch: ProjectFieldPatch | undefine
       patch.security_update !== undefined ? patch.security_update : project.security_update,
     talent_policy: patch.talent_policy !== undefined ? patch.talent_policy : project.talent_policy,
     owner: patch.owner !== undefined ? patch.owner : project.owner,
+    tpe_owner: patch.tpe_owner !== undefined ? patch.tpe_owner : project.tpe_owner,
     custom: { ...(project.custom ?? {}), ...(patch.custom ?? {}) },
   };
 }
@@ -247,6 +248,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
         p.security_update,
         p.talent_policy,
         p.owner,
+        p.tpe_owner,
         ...Object.values(p.custom ?? {}),
       ]
         .filter(Boolean)
@@ -899,13 +901,16 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                         if (stdKey) {
                           const value = standardFieldValue(draft, stdKey);
                           const isDate = stdKey === "ss_date" || stdKey === "eol_date";
-                          if (stdKey === "owner") {
+                          if (stdKey === "owner" || stdKey === "tpe_owner") {
                             const selected = ownerSelectValue(value);
                             const orphan =
                               selected !== "" &&
                               !personnelOwnerOptions.some(
                                 (p) => p.display_name === selected,
                               );
+                            const fieldKey = stdKey;
+                            const aria =
+                              stdKey === "owner" ? "Project Leader" : "Owner";
                             return (
                               <td key={col.id}>
                                 {canEditFields ? (
@@ -913,9 +918,11 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                                     className="pi-cell-input pi-cell-select"
                                     value={selected}
                                     disabled={busy}
-                                    aria-label="Project Leader"
+                                    aria-label={aria}
                                     onChange={(e) =>
-                                      setDraftField(project.id, { owner: e.target.value })
+                                      setDraftField(project.id, {
+                                        [fieldKey]: e.target.value,
+                                      } as ProjectFieldPatch)
                                     }
                                   >
                                     <option value="">—</option>

@@ -669,14 +669,17 @@ export function CycleDetailPanel({
                       );
                     }
                     if (row.kind === "date") {
+                      const dateVal = toDateInputValue(value);
                       return (
-                        <td key={p.id} className="sec-detail-proj-col">
+                        <td key={p.id} className="sec-detail-proj-col sec-detail-date-cell">
                           <input
                             type="date"
-                            className="sec-detail-date-input"
-                            value={toDateInputValue(value)}
+                            lang="en-CA"
+                            className={`sec-detail-date-input${dateVal ? "" : " is-empty"}`}
+                            value={dateVal}
                             onChange={(e) => setReleaseCell(p.id, row.key, e.target.value)}
                             aria-label={`${row.label} · ${p.name}`}
+                            title={dateVal || "YYYY-MM-DD"}
                           />
                         </td>
                       );

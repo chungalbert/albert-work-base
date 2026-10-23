@@ -137,8 +137,13 @@ export interface Project {
   eol_date?: string;
   security_update?: string;
   talent_policy?: string;
-  /** Project Leader / Owner (standard middle column; Neon `owner`; removable via Admin column defs). */
+  /** Project Leader (standard middle column; Neon `owner`; removable via Admin column defs). */
   owner?: string;
+  /**
+   * Owner (standard middle column beside PROJECT LEADER; Neon `tpe_owner`).
+   * Distinct from `owner`. Legacy UI label: TPE OWNER.
+   */
+  tpe_owner?: string;
   /** Values for user-defined Projects columns. */
   custom?: Record<string, string>;
 }

@@ -5563,7 +5563,7 @@ button.sec-th-affordance:disabled {
 .sec-detail-matrix td {
   border-top: 1px solid var(--sec-line);
   border-left: 1px solid var(--sec-line);
-  padding: 8px 10px;
+  padding: 10px 12px;
   vertical-align: middle;
   box-sizing: border-box;
 }
@@ -5579,6 +5579,7 @@ button.sec-th-affordance:disabled {
   position: sticky;
   top: 0;
   z-index: 4;
+  box-shadow: 0 1px 0 var(--sec-line);
 }
 .sec-detail-sticky-col {
   position: sticky;
@@ -5598,7 +5599,7 @@ button.sec-th-affordance:disabled {
   width: var(--sec-freeze-2);
   max-width: var(--sec-freeze-2);
   z-index: 2;
-  box-shadow: 1px 0 0 var(--sec-line);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.22);
 }
 .sec-detail-matrix thead .sec-detail-sticky-col {
   z-index: 5;
@@ -5766,21 +5767,66 @@ button.sec-th-affordance:disabled {
   color: var(--sec-muted);
   font-size: 12px;
 }
+.sec-detail-date-cell {
+  padding: 8px 10px;
+}
 .sec-detail-date-input {
+  display: block;
   width: 100%;
-  max-width: 140px;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
   border: 1px solid var(--sec-line);
   background: var(--sec-panel-2);
   color: var(--sec-text);
+  -webkit-text-fill-color: var(--sec-text);
   border-radius: 6px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   font: inherit;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
   color-scheme: dark;
+  caret-color: var(--sec-text);
 }
 .sec-detail-date-input:focus {
   outline: none;
   border-color: var(--sec-link);
+  background: rgba(96, 165, 250, 0.08);
+}
+.sec-detail-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.85;
+  filter: none;
+}
+.sec-detail-date-input::-webkit-datetime-edit,
+.sec-detail-date-input::-webkit-datetime-edit-fields-wrapper,
+.sec-detail-date-input::-webkit-datetime-edit-text,
+.sec-detail-date-input::-webkit-datetime-edit-year-field,
+.sec-detail-date-input::-webkit-datetime-edit-month-field,
+.sec-detail-date-input::-webkit-datetime-edit-day-field {
+  color: var(--sec-text);
+  -webkit-text-fill-color: var(--sec-text);
+  padding: 0;
+}
+/* Empty date: mute locale chrome (avoid loud 年/月/日) — en-CA forces YYYY-MM-DD. */
+.sec-detail-date-input.is-empty,
+.sec-detail-date-input:invalid {
+  color: var(--sec-muted);
+  -webkit-text-fill-color: var(--sec-muted);
+}
+.sec-detail-date-input.is-empty::-webkit-datetime-edit,
+.sec-detail-date-input.is-empty::-webkit-datetime-edit-text,
+.sec-detail-date-input.is-empty::-webkit-datetime-edit-year-field,
+.sec-detail-date-input.is-empty::-webkit-datetime-edit-month-field,
+.sec-detail-date-input.is-empty::-webkit-datetime-edit-day-field,
+.sec-detail-date-input:invalid::-webkit-datetime-edit,
+.sec-detail-date-input:invalid::-webkit-datetime-edit-text,
+.sec-detail-date-input:invalid::-webkit-datetime-edit-year-field,
+.sec-detail-date-input:invalid::-webkit-datetime-edit-month-field,
+.sec-detail-date-input:invalid::-webkit-datetime-edit-day-field {
+  color: var(--sec-muted);
+  -webkit-text-fill-color: var(--sec-muted);
 }
 .sec-detail-item-title:hover,
 .sec-detail-item-detail:hover,
@@ -5908,6 +5954,8 @@ button.sec-th-affordance:disabled {
   font-weight: 600;
   color: var(--sec-muted);
   font-size: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 /* Release rows span both frozen columns — keep combined freeze width + edge shadow. */
 .sec-release-label.sec-detail-sticky-1 {
@@ -5915,32 +5963,61 @@ button.sec-th-affordance:disabled {
   width: var(--sec-freeze-total);
   min-width: var(--sec-freeze-total);
   max-width: var(--sec-freeze-total);
-  box-shadow: 1px 0 0 var(--sec-line);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.22);
+}
+.sec-release-field-row td {
+  background: var(--sec-panel);
 }
 .sec-release-field-row .sec-detail-sticky-col {
   background: var(--sec-panel);
 }
+.sec-release-field-row:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.sec-release-field-row:hover .sec-detail-sticky-col {
+  background: var(--sec-panel);
+}
 .sec-release-status-row td {
-  background: rgba(120, 80, 40, 0.18);
+  background: rgba(180, 120, 48, 0.14);
+  border-top-color: rgba(180, 120, 48, 0.28);
 }
 .sec-release-status-row .sec-detail-sticky-col {
-  background: rgba(120, 80, 40, 0.22);
+  background: rgba(180, 120, 48, 0.2);
+  font-weight: 650;
+  color: #f0d9a8;
+}
+.sec-release-status-row:hover td {
+  background: rgba(180, 120, 48, 0.2);
+}
+.sec-release-status-row:hover .sec-detail-sticky-col {
+  background: rgba(180, 120, 48, 0.26);
 }
 .sec-release-select {
   border: 1px solid var(--sec-line);
   background: var(--sec-panel-2);
   color: var(--sec-text);
   border-radius: 6px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   width: 100%;
-  max-width: 120px;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
   color-scheme: dark;
+  cursor: pointer;
+}
+.sec-release-select:focus {
+  outline: none;
+  border-color: var(--sec-link);
 }
 .sec-release-select.is-ongoing { color: var(--warn); }
 .sec-release-select.is-done { color: var(--ok); }
+.sec-release-select:not(.is-ongoing):not(.is-done) {
+  color: var(--sec-muted);
+  font-weight: 500;
+}
 .sec-release-select option {
   color: var(--sec-text);
   background-color: var(--sec-panel);

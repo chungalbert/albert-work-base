@@ -423,6 +423,7 @@ export const localApi = {
       security_update: "",
       talent_policy: "",
       owner: "",
+      tpe_owner: "",
       custom: {},
     };
     store.projects.push(project);
@@ -449,6 +450,7 @@ export const localApi = {
       security_update?: string;
       talent_policy?: string;
       owner?: string;
+      tpe_owner?: string;
       custom?: Record<string, string>;
     },
   ): Project {
@@ -475,6 +477,7 @@ export const localApi = {
     if (patch.security_update !== undefined) project.security_update = patch.security_update.trim();
     if (patch.talent_policy !== undefined) project.talent_policy = patch.talent_policy.trim();
     if (patch.owner !== undefined) project.owner = patch.owner.trim();
+    if (patch.tpe_owner !== undefined) project.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       project.custom = { ...(project.custom ?? {}), ...patch.custom };
     }
