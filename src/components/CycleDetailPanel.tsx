@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CycleDetailDoc,
   CycleDetailItem,
@@ -163,8 +163,9 @@ export function CycleDetailPanel({
   const [draft, setDraft] = useState(() => cloneDoc(initialDoc));
   const [releaseOpen, setReleaseOpen] = useState(true);
   const [error, setError] = useState("");
-  /** Project ids whose ECR Number cell is in edit mode (two inputs). */
+  /** Project ids whose ECR Number cell is expanded (number + URL inputs). */
   const [ecrEditing, setEcrEditing] = useState<Set<string>>(() => new Set());
+  const ecrFocusPidRef = useRef<string | null>(null);
 
   useEffect(() => {
     setDraft(cloneDoc(initialDoc));
@@ -172,6 +173,46 @@ export function CycleDetailPanel({
     setEcrEditing(new Set());
     setError("");
   }, [initialDoc]);
+
+  /** Click / focus outside an expanded ECR cell → collapse back to link view. */
+  useEffect(() => {
+    if (ecrEditing.size === 0) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-ecr-expand]")) return;
+      setEcrEditing(new Set());
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEcrEditing(new Set());
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [ecrEditing.size]);
+
+  /** Focus the number input when a cell first expands. */
+  useEffect(() => {
+    const pid = ecrFocusPidRef.current;
+    if (!pid || !ecrEditing.has(pid)) return;
+    const root = document.querySelector(`[data-ecr-expand="${CSS.escape(pid)}"]`);
+    const input = root?.querySelector<HTMLInputElement>("input.sec-ecr-input");
+    input?.focus();
+    ecrFocusPidRef.current = null;
+  }, [ecrEditing]);
+
+  const expandEcr = useCallback((projectId: string) => {
+    ecrFocusPidRef.current = projectId;
+    setEcrEditing((prev) => {
+      if (prev.has(projectId)) return prev;
+      const next = new Set(prev);
+      next.add(projectId);
+      return next;
+    });
+  }, []);
 
   const dirty = detailDocSignature(draft) !== baseline;
 
@@ -538,70 +579,71 @@ export function CycleDetailPanel({
                     if (row.kind === "ecr") {
                       const number = (cell.ecr_number ?? "").trim();
                       const url = (cell.ecr_url ?? "").trim();
-                      const editing = ecrEditing.has(p.id) || !number;
-                      if (!editing) {
-                        const href = normalizeEcrHref(url);
+                      const editing = ecrEditing.has(p.id);
+                      if (editing) {
                         return (
-                          <td key={p.id} className="sec-detail-proj-col">
-                            <div className="sec-ecr-view">
-                              {href ? (
+                          <td
+                            key={p.id}
+                            className="sec-detail-proj-col sec-ecr-cell is-expanded"
+                            data-ecr-expand={p.id}
+                          >
+                            <div className="sec-ecr-edit-stack">
+                              <input
+                                className="sec-detail-cell-input sec-ecr-input"
+                                value={cell.ecr_number ?? ""}
+                                onChange={(e) => setReleaseCell(p.id, "ecr_number", e.target.value)}
+                                placeholder="ECR Number"
+                                aria-label={`ECR Number · ${p.name}`}
+                              />
+                              <input
+                                className="sec-detail-cell-input sec-ecr-input"
+                                type="url"
+                                value={cell.ecr_url ?? ""}
+                                onChange={(e) => setEcrUrl(p.id, e.target.value)}
+                                placeholder="https://…"
+                                aria-label={`ECR URL · ${p.name}`}
+                              />
+                            </div>
+                          </td>
+                        );
+                      }
+                      const href = normalizeEcrHref(url);
+                      return (
+                        <td
+                          key={p.id}
+                          className="sec-detail-proj-col sec-ecr-cell is-collapsed"
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Edit ECR Number · ${p.name}`}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("a")) return;
+                            expandEcr(p.id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              expandEcr(p.id);
+                            }
+                          }}
+                        >
+                          <div className="sec-ecr-view">
+                            {number ? (
+                              href ? (
                                 <a
                                   className="sec-ecr-link"
                                   href={href}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   {number}
                                 </a>
                               ) : (
                                 <span className="sec-ecr-plain">{number}</span>
-                              )}
-                              <button
-                                type="button"
-                                className="sec-ecr-edit"
-                                onClick={() =>
-                                  setEcrEditing((prev) => new Set(prev).add(p.id))
-                                }
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          </td>
-                        );
-                      }
-                      return (
-                        <td key={p.id} className="sec-detail-proj-col">
-                          <div className="sec-ecr-edit-stack">
-                            <input
-                              className="sec-detail-cell-input sec-ecr-input"
-                              value={cell.ecr_number ?? ""}
-                              onChange={(e) => setReleaseCell(p.id, "ecr_number", e.target.value)}
-                              placeholder="ECR Number"
-                              aria-label={`ECR Number · ${p.name}`}
-                            />
-                            <input
-                              className="sec-detail-cell-input sec-ecr-input"
-                              type="url"
-                              value={cell.ecr_url ?? ""}
-                              onChange={(e) => setEcrUrl(p.id, e.target.value)}
-                              placeholder="https://…"
-                              aria-label={`ECR URL · ${p.name}`}
-                            />
-                            {number ? (
-                              <button
-                                type="button"
-                                className="sec-ecr-edit"
-                                onClick={() =>
-                                  setEcrEditing((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete(p.id);
-                                    return next;
-                                  })
-                                }
-                              >
-                                Done
-                              </button>
-                            ) : null}
+                              )
+                            ) : (
+                              <span className="sec-ecr-empty">—</span>
+                            )}
                           </div>
                         </td>
                       );
