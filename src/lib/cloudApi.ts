@@ -8,7 +8,8 @@ import {
   seedStandardProjectColumns,
   type ProjectFieldPatch,
 } from "./projectsUiStore";
-import type { CycleDetailDoc, CycleDetailItem, ItemApplyStatus } from "./cycleDetailTypes";
+import type { CycleDetailDoc, CycleDetailItem, ItemApplyCell } from "./cycleDetailTypes";
+import { normalizeApplyCell } from "./cycleDetailTypes";
 import type {
   NewCycleInput,
   SecurityCycle,
@@ -132,12 +133,6 @@ function mapSecurityIssue(row: Record<string, unknown>): SecurityIssue {
   };
 }
 
-function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
-  const s = String(raw ?? "");
-  if (s === "Applied" || s === "Not Applied") return s;
-  return "";
-}
-
 function mapSecurityCycleDetail(row: Record<string, unknown>): CycleDetailDoc {
   const cycleId = String(row.cycle_id ?? "");
   const itemsRaw = Array.isArray(row.items) ? row.items : [];
@@ -145,9 +140,9 @@ function mapSecurityCycleDetail(row: Record<string, unknown>): CycleDetailDoc {
     const o = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const appliesRaw =
       o.applies && typeof o.applies === "object" ? (o.applies as Record<string, unknown>) : {};
-    const applies: Record<string, ItemApplyStatus> = {};
+    const applies: Record<string, ItemApplyCell> = {};
     for (const [pid, v] of Object.entries(appliesRaw)) {
-      applies[pid] = normalizeApplyStatus(v);
+      applies[pid] = normalizeApplyCell(v);
     }
     return {
       id: String(o.id ?? `cdi-${i}`),

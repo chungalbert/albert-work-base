@@ -5477,40 +5477,23 @@ button.sec-th-affordance:disabled {
   font-size: 12px;
   color: var(--warn);
 }
-.sec-detail-autosave {
-  font-size: 12px;
-  color: var(--sec-muted);
-}
-.sec-new-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 14px;
-  background: var(--sec-accent);
-  color: #fff;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.sec-new-item:hover { filter: brightness(1.08); }
-.sec-new-item:disabled { opacity: 0.55; cursor: wait; }
-.sec-new-item-plus {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-}
-.sec-save-all {
+.sec-toolbar-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
   border-radius: 8px;
   white-space: nowrap;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.sec-toolbar-action-icon {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
 }
 .sec-detail-matrix-wrap {
   overflow: auto;
@@ -5527,7 +5510,7 @@ button.sec-th-affordance:disabled {
 }
 .sec-detail-unified .sec-col-item { width: 240px; }
 .sec-detail-unified .sec-col-comment { width: 140px; }
-.sec-detail-unified .sec-col-proj { width: 120px; }
+.sec-detail-unified .sec-col-proj { width: 150px; }
 .sec-detail-matrix th,
 .sec-detail-matrix td {
   border-top: 1px solid var(--sec-line);
@@ -5576,9 +5559,9 @@ button.sec-th-affordance:disabled {
   min-width: 140px;
 }
 .sec-detail-proj-col {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
   text-align: center;
 }
 .sec-detail-proj-head {
@@ -5679,26 +5662,61 @@ button.sec-th-affordance:disabled {
   flex-shrink: 0;
 }
 .sec-detail-trash:hover { color: var(--danger); }
-.sec-apply-btn {
-  border: none;
-  background: transparent;
-  color: var(--sec-muted);
+.sec-apply-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  min-width: 0;
+}
+.sec-apply-select {
+  width: 100%;
+  border: 1px solid var(--sec-line);
+  background: var(--sec-panel-2);
+  color: var(--sec-text);
+  border-radius: 6px;
+  padding: 5px 8px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 999px;
+  color-scheme: dark;
   cursor: pointer;
-  min-width: 72px;
 }
-.sec-apply-btn.is-applied { color: var(--ok); }
-.sec-apply-btn.is-not-applied {
+.sec-apply-select:focus {
+  outline: none;
+  border-color: var(--sec-link);
+}
+.sec-apply-select.is-applied { color: var(--ok); }
+.sec-apply-select.is-not-applied { color: var(--sec-text); }
+.sec-apply-select.is-na { color: var(--sec-muted); }
+.sec-apply-select.is-empty { color: var(--sec-muted); font-weight: 500; }
+.sec-apply-select option {
   color: var(--sec-text);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--sec-line);
+  background-color: var(--sec-panel);
+  font-weight: 500;
 }
-.sec-apply-btn.is-empty { color: var(--sec-muted); }
-.sec-apply-btn:hover { filter: brightness(1.15); }
+.sec-apply-cell.is-applied {
+  background: rgba(52, 211, 153, 0.08);
+}
+.sec-apply-comment {
+  width: 100%;
+  min-height: 44px;
+  resize: vertical;
+  border: 1px solid var(--sec-line);
+  background: var(--sec-panel-2);
+  color: var(--sec-text);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  color-scheme: dark;
+}
+.sec-apply-comment::placeholder { color: var(--sec-muted); }
+.sec-apply-comment:focus {
+  outline: none;
+  border-color: var(--sec-link);
+}
 .sec-release-section-row td {
   padding: 0;
   border-left: none;
@@ -5724,14 +5742,6 @@ button.sec-th-affordance:disabled {
   cursor: pointer;
 }
 .sec-release-toggle:hover { filter: brightness(1.08); }
-.sec-release-hint {
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--sec-muted);
-  text-transform: none;
-  letter-spacing: 0;
-}
 .sec-release-label {
   font-weight: 600;
   color: var(--sec-muted);

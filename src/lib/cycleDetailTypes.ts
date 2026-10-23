@@ -1,6 +1,12 @@
 /** Cycle detail matrix (security items × projects) + project release tracking. */
 
-export type ItemApplyStatus = "Applied" | "Not Applied" | "";
+export type ItemApplyStatus = "Applied" | "Not Applied" | "Not Applicable" | "";
+
+/** Per-project cell under a security update item. */
+export type ItemApplyCell = {
+  status: ItemApplyStatus;
+  comment: string;
+};
 
 export type CycleDetailItem = {
   id: string;
@@ -8,8 +14,8 @@ export type CycleDetailItem = {
   /** Secondary line under title (version / path / note). */
   detail: string;
   cycle_comment: string;
-  /** project_id → apply status */
-  applies: Record<string, ItemApplyStatus>;
+  /** project_id → status + comment */
+  applies: Record<string, ItemApplyCell>;
   sort_order: number;
 };
 
@@ -43,9 +49,37 @@ export type CycleDetailDoc = {
   updated_at: string;
 };
 
-export const APPLY_STATUSES: ItemApplyStatus[] = ["", "Applied", "Not Applied"];
+/** Dropdown options (AIOSW). Empty = unset / —. */
+export const APPLY_STATUSES: ItemApplyStatus[] = [
+  "",
+  "Applied",
+  "Not Applied",
+  "Not Applicable",
+];
 
 export const RELEASE_STATUS_OPTIONS = ["", "Ongoing", "Done", "Blocked", "N/A"] as const;
+
+export function emptyApplyCell(): ItemApplyCell {
+  return { status: "", comment: "" };
+}
+
+export function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
+  const s = String(raw ?? "");
+  if (s === "Applied" || s === "Not Applied" || s === "Not Applicable") return s;
+  return "";
+}
+
+/** Accept legacy string status or `{ status, comment }`. */
+export function normalizeApplyCell(raw: unknown): ItemApplyCell {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    return {
+      status: normalizeApplyStatus(o.status ?? o.value ?? ""),
+      comment: String(o.comment ?? ""),
+    };
+  }
+  return { status: normalizeApplyStatus(raw), comment: "" };
+}
 
 export function emptyCycleDetail(cycleId: string): CycleDetailDoc {
   return {
@@ -60,10 +94,6 @@ export function newDetailItemId(): string {
   return `cdi-${crypto.randomUUID()}`;
 }
 
-export function itemsSignature(items: CycleDetailItem[]): string {
-  return JSON.stringify(items);
-}
-
-export function releaseSignature(release: CycleReleaseTracking): string {
-  return JSON.stringify(release);
+export function detailDocSignature(doc: Pick<CycleDetailDoc, "items" | "release">): string {
+  return JSON.stringify({ items: doc.items, release: doc.release });
 }

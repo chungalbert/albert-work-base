@@ -3,7 +3,7 @@ import { CycleDetailPanel } from "../components/CycleDetailPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useStore } from "../context/StoreContext";
-import type { CycleDetailDoc, CycleReleaseTracking } from "../lib/cycleDetailTypes";
+import type { CycleDetailDoc } from "../lib/cycleDetailTypes";
 import {
   cycleMetrics,
   securityDisplayDate,
@@ -376,18 +376,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               busy={saveStatus.kind === "saving"}
               onBack={closeCycleDetail}
               onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
-              onSaveItems={async (doc) => {
-                const saved = await runSave(() => securityStore.saveCycleDetail(doc));
-                setDetailDoc(saved);
-              }}
-              onAutoSaveRelease={async (release: CycleReleaseTracking) => {
-                // Persist release immediately; keep already-saved items (draft items stay local).
-                const doc: CycleDetailDoc = {
-                  cycle_id: detailCycle.id,
-                  items: detailDoc?.items ?? [],
-                  release,
-                  updated_at: new Date().toISOString(),
-                };
+              onSave={async (doc) => {
                 const saved = await runSave(() => securityStore.saveCycleDetail(doc));
                 setDetailDoc(saved);
               }}
