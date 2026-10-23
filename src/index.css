@@ -5888,6 +5888,53 @@ button.sec-th-affordance:disabled {
   color: var(--sec-text);
   background-color: var(--sec-panel);
 }
+.sec-ecr-edit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  min-width: 0;
+}
+.sec-ecr-input {
+  border: 1px solid var(--sec-line) !important;
+  background: var(--sec-panel-2) !important;
+  font-size: 11px !important;
+  padding: 4px 6px !important;
+}
+.sec-ecr-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.sec-ecr-link {
+  color: var(--sec-link);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.sec-ecr-link:hover { filter: brightness(1.12); }
+.sec-ecr-plain {
+  color: var(--sec-text);
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.sec-ecr-edit {
+  border: none;
+  background: transparent;
+  color: var(--sec-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sec-ecr-edit:hover { color: var(--sec-link); }
 .sec-status-derived {
   display: inline-flex;
   align-items: center;
